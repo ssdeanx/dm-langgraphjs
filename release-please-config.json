@@ -1,0 +1,15 @@
+{
+  "changelogPath": "CHANGELOG.md",
+  "releaseType": "node",
+  "packages": {
+    ".": {
+      "changelogSections": [
+        { "type": "feat", "section": "[AI/Agent] Features" },
+        { "type": "fix", "section": "[Fixed]" },
+        { "type": "chore", "section": "[Chore]" },
+        { "type": "refactor", "section": "[Changed]" },
+        { "type": "docs", "section": "[Docs]" }
+      ]
+    }
+  }
+}

@@ -5,6 +5,9 @@
 import { StateGraph } from "@langchain/langgraph";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { StateAnnotation } from "./state.js";
+import { config } from "dotenv";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { AIMessage } from "@langchain/core/messages";
 
 /**
  * Define a node, these do the work of the graph and should have most of the logic.
@@ -14,56 +17,43 @@ import { StateAnnotation } from "./state.js";
  * @returns Some subset of parameters of the graph state, used to update the state
  * for the edges and nodes executed next.
  */
+config(); // Load environment variables from .env
+
+const model = new ChatGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY!,
+  model: process.env.GEMINI_MODEL || "gemini-2.5-pro",
+});
+
 const callModel = async (
   state: typeof StateAnnotation.State,
   _config: RunnableConfig,
 ): Promise<typeof StateAnnotation.Update> => {
-  /**
-   * Do some work... (e.g. call an LLM)
-   * For example, with LangChain you could do something like:
-   *
-   * ```bash
-   * $ npm i @langchain/anthropic
-   * ```
-   *
-   * ```ts
-   * import { ChatAnthropic } from "@langchain/anthropic";
-   * const model = new ChatAnthropic({
-   *   model: "claude-3-5-sonnet-20240620",
-   *   apiKey: process.env.ANTHROPIC_API_KEY,
-   * });
-   * const res = await model.invoke(state.messages);
-   * ```
-   *
-   * Or, with an SDK directly:
-   *
-   * ```bash
-   * $ npm i openai
-   * ```
-   *
-   * ```ts
-   * import OpenAI from "openai";
-   * const openai = new OpenAI({
-   *   apiKey: process.env.OPENAI_API_KEY,
-   * });
-   *
-   * const chatCompletion = await openai.chat.completions.create({
-   *   messages: [{
-   *     role: state.messages[0]._getType(),
-   *     content: state.messages[0].content,
-   *   }],
-   *   model: "gpt-4o-mini",
-   * });
-   * ```
-   */
-  console.log("Current state:", state);
+  if (!state.messages.length) {
+    return { messages: [] };
+  }
+  let aiResponse;
+  let errors = state.errors || [];
+  let toolResults = state.toolResults || [];
+  let retrievedDocs = state.retrievedDocs || [];
+  let step = typeof state.step === "number" ? state.step + 1 : 1;
+  try {
+    aiResponse = await model.invoke(state.messages);
+    // Example: simulate tool usage and document retrieval
+    // (Replace with real tool/doc logic as needed)
+    toolResults = [...toolResults, { used: false, ts: Date.now() }];
+    retrievedDocs = [...retrievedDocs, { doc: "Sample doc", ts: Date.now() }];
+  } catch (err) {
+    errors = [...errors, (err as Error).message];
+    aiResponse = undefined;
+  }
   return {
-    messages: [
-      {
-        role: "assistant",
-        content: `Hi there! How are you?`,
-      },
-    ],
+    messages: aiResponse ? [...state.messages, aiResponse] : state.messages,
+    step,
+    toolResults,
+    retrievedDocs,
+    errors,
+    userProfile: state.userProfile,
+    conversationId: state.conversationId,
   };
 };
 
@@ -77,10 +67,13 @@ const callModel = async (
 export const route = (
   state: typeof StateAnnotation.State,
 ): "__end__" | "callModel" => {
-  if (state.messages.length > 0) {
+  // End if the last message is from the assistant
+  if (
+    state.messages.length > 0 &&
+    state.messages[state.messages.length - 1] instanceof AIMessage
+  ) {
     return "__end__";
   }
-  // Loop back
   return "callModel";
 };
 

@@ -48,12 +48,10 @@ export const StateAnnotation = Annotation.Root({
     reducer: messagesStateReducer,
     default: () => [],
   }),
-  /**
-   * Feel free to add additional attributes to your state as needed.
-   * Common examples include retrieved documents, extracted entities, API connections, etc.
-   *
-   * For simple fields whose value should be overwritten by the return value of a node,
-   * you don't need to define a reducer or default.
-   */
-  // additionalField: Annotation<string>,
+  userProfile: Annotation<Record<string, unknown>>(),
+  conversationId: Annotation<string>(),
+  retrievedDocs: Annotation<unknown[]>(),
+  step: Annotation<number>(),
+  toolResults: Annotation<unknown[]>(),
+  errors: Annotation<string[]>(),
 });
