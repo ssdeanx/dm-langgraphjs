@@ -1,0 +1,46 @@
+{
+  "name": "dm-langgraph",
+  "version": "0.0.1",
+  "description": "LangGraph workflow.",
+  "main": "my_app/graph.ts",
+  "author": "ssdeanx",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --testPathPattern=\\.test\\.ts$ --testPathIgnorePatterns=\\.int\\.test\\.ts$",
+    "test:int": "node --experimental-vm-modules node_modules/jest/bin/jest.js --testPathPattern=\\.int\\.test\\.ts$",
+    "format": "prettier --write .",
+    "lint": "eslint src",
+    "format:check": "prettier --check .",
+    "lint:langgraph-json": "node scripts/checkLanggraphPaths.js",
+    "lint:all": "npm run lint && npm run lint:langgraph-json && npm run format:check",
+    "test:all": "npm run test && npm run test:int && npm run lint:langgraph"
+  },
+  "dependencies": {
+    "@langchain/community": "^0.3.47",
+    "@langchain/core": "^0.3.61",
+    "@langchain/google-genai": "^0.2.13",
+    "@langchain/langgraph": "^0.3.5"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.29.0",
+    "@tsconfig/recommended": "^1.0.10",
+    "@types/jest": "^30.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.35.0",
+    "@typescript-eslint/parser": "^8.35.0",
+    "dotenv": "^16.6.0",
+    "eslint": "^9.29.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-no-instanceof": "^1.0.1",
+    "eslint-plugin-prettier": "^5.5.1",
+    "jest": "^30.0.3",
+    "prettier": "^3.6.2",
+    "ts-jest": "^29.4.0",
+    "typescript": "^5.8.3"
+  }
+}
