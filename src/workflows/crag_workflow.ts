@@ -1,8 +1,7 @@
-
 import { StateGraph, END } from "@langchain/langgraph";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { CragState } from "../agent/crag_state";
+import { CragState } from "../agent/crag_state.js";
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 import { Document } from "@langchain/core/documents";
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
@@ -32,7 +31,12 @@ const retriever = await initializeRetriever();
  */
 async function retrieveNode(state: CragState): Promise<Partial<CragState>> {
   const documents = await retriever.invoke(state.question);
-  return { documents };
+  // Add the user's question as a HumanMessage if not already present
+  let messages = state.messages;
+  if (!messages.length || !(messages[0] instanceof HumanMessage)) {
+    messages = [new HumanMessage(state.question), ...messages];
+  }
+  return { documents, messages };
 }
 
 /**

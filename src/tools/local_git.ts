@@ -1,25 +1,14 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import simpleGit, { SimpleGit } from "simple-git";
+import git from "isomorphic-git";
+import http from "isomorphic-git/http/node/index.js";
 import { createFsFromVolume, Volume } from "memfs";
 
-/**
- * In-memory file system for sandboxed Git operations.
- * @type {Volume}
- */
 const vol = new Volume();
-const ifs = createFsFromVolume(vol);
+const fs = createFsFromVolume(vol); // Keep 'fs' for synchronous operations like readFileSync
+const fsPromises = fs.promises; // Access the promise-based API
 
-/**
- * Initializes a simple-git instance with the in-memory file system.
- * @returns {SimpleGit} A simple-git instance configured for in-memory operations.
- */
-function getInMemoryGit(): SimpleGit {
-  return simpleGit({
-    fs: ifs,
-    baseDir: "/", // Root of the in-memory file system
-  });
-}
+const dir = "/";
 
 /**
  * @module LocalGitTools
@@ -36,11 +25,15 @@ function getInMemoryGit(): SimpleGit {
  */
 export const cloneRepositoryTool = tool(
   async ({ repoUrl, branch }) => {
-    const git = getInMemoryGit();
     try {
-      // Clear previous content in the in-memory file system
-      vol.reset();
-      await git.clone(repoUrl, "/repo", branch ? ["--branch", branch] : []);
+      await git.clone({
+        fs,
+        http,
+        dir,
+        url: repoUrl,
+        ref: branch,
+        singleBranch: !!branch,
+      });
       return `Repository ${repoUrl} cloned successfully into in-memory file system.`;
     } catch (error: any) {
       console.error("Error cloning repository:", error);
@@ -49,7 +42,8 @@ export const cloneRepositoryTool = tool(
   },
   {
     name: "clone_repository",
-    description: "Clones a Git repository into an in-memory file system for analysis.",
+    description:
+      "Clones a Git repository into an in-memory file system for analysis.",
     schema: z.object({
       repoUrl: z.string().describe("The URL of the repository to clone."),
       branch: z.string().optional().describe("The specific branch to clone."),
@@ -61,13 +55,14 @@ export const cloneRepositoryTool = tool(
  * Reads the content of a file from the in-memory file system.
  * @function
  * @param {object} input - The input object.
- * @param {string} input.filePath - The path to the file within the in-memory file system (e.g., '/repo/README.md').
+ * @param {string} input.filePath - The path to the file within the in-memory file system (e.g., '/README.md').
  * @returns {Promise<string>} The content of the file as a string.
  */
 export const readInMemoryFileTool = tool(
   async ({ filePath }) => {
     try {
-      const content = await ifs.promises.readFile(filePath, "utf-8");
+      // memfs readFileSync returns a Buffer, so convert to string
+      const content = fs.readFileSync(filePath, "utf-8");
       return content as string;
     } catch (error: any) {
       console.error("Error reading in-memory file:", error);
@@ -76,9 +71,14 @@ export const readInMemoryFileTool = tool(
   },
   {
     name: "read_in_memory_file",
-    description: "Reads the content of a file from the in-memory cloned repository.",
+    description:
+      "Reads the content of a file from the in-memory cloned repository.",
     schema: z.object({
-      filePath: z.string().describe("The path to the file within the in-memory cloned repository (e.g., '/repo/README.md')."),
+      filePath: z
+        .string()
+        .describe(
+          "The path to the file within the in-memory cloned repository (e.g., '/README.md')."
+        ),
     }),
   }
 );
@@ -87,13 +87,13 @@ export const readInMemoryFileTool = tool(
  * Lists files and directories within the in-memory file system.
  * @function
  * @param {object} input - The input object.
- * @param {string} input.path - The path to the directory to list (e.g., '/repo/').
+ * @param {string} input.path - The path to the directory to list (e.g., '/').
  * @returns {Promise<string>} A JSON string of file and directory names.
  */
 export const listInMemoryFilesTool = tool(
   async ({ path }) => {
     try {
-      const files = await ifs.promises.readdir(path);
+      const files = await fsPromises.readdir(path) as string[];
       return JSON.stringify(files);
     } catch (error: any) {
       console.error("Error listing in-memory files:", error);
@@ -102,9 +102,12 @@ export const listInMemoryFilesTool = tool(
   },
   {
     name: "list_in_memory_files",
-    description: "Lists files and directories within the in-memory cloned repository.",
+    description:
+      "Lists files and directories within the in-memory cloned repository.",
     schema: z.object({
-      path: z.string().describe("The path to the directory to list (e.g., '/repo/')."),
+      path: z
+        .string()
+        .describe("The path to the directory to list (e.g., '/')."),
     }),
   }
 );
@@ -119,7 +122,7 @@ export const listInMemoryFilesTool = tool(
 export const getInMemoryFileStatsTool = tool(
   async ({ filePath }) => {
     try {
-      const stats = await ifs.promises.stat(filePath);
+      const stats = await fsPromises.stat(filePath);
       return JSON.stringify({
         size: stats.size,
         isDirectory: stats.isDirectory(),
@@ -133,9 +136,12 @@ export const getInMemoryFileStatsTool = tool(
   },
   {
     name: "get_in_memory_file_stats",
-    description: "Gets file statistics (size, type, etc.) from the in-memory cloned repository.",
+    description:
+      "Gets file statistics (size, type, etc.) from the in-memory cloned repository.",
     schema: z.object({
-      filePath: z.string().describe("The path to the file within the in-memory file system."),
+      filePath: z
+        .string()
+        .describe("The path to the file within the in-memory file system."),
     }),
   }
 );
@@ -149,13 +155,17 @@ export const getInMemoryFileStatsTool = tool(
  */
 export const commitInMemoryChangesTool = tool(
   async ({ message }) => {
-    const git = getInMemoryGit();
     try {
-      await git.addConfig("user.email", "agent@example.com");
-      await git.addConfig("user.name", "LangGraph Agent");
-      await git.add("."); // Stage all changes
-      const commitResult = await git.commit(message);
-      return `Changes committed to in-memory repository: ${commitResult.commit}`;
+      const sha = await git.commit({
+        fs,
+        dir,
+        message,
+        author: {
+          name: "LangGraph Agent",
+          email: "agent@example.com",
+        },
+      });
+      return `Changes committed to in-memory repository: ${sha}`;
     } catch (error: any) {
       console.error("Error committing in-memory changes:", error);
       return `Error committing in-memory changes: ${error.message}`;
@@ -174,17 +184,18 @@ export const commitInMemoryChangesTool = tool(
  * Gets the commit log of the in-memory Git repository.
  * @function
  * @param {object} input - The input object.
- * @param {number} [input.maxCount=10] - The maximum number of log entries to return.
+ * @param {number} [input.depth=10] - The maximum number of log entries to return.
  * @returns {Promise<string>} A JSON string of commit log entries.
  */
 export const getInMemoryLogTool = tool(
-  async ({ maxCount = 10 }) => {
-    const git = getInMemoryGit();
+  async ({ depth = 10 }) => {
     try {
       const log = await git.log({
-        maxCount,
+        fs,
+        dir,
+        depth,
       });
-      return JSON.stringify(log.all);
+      return JSON.stringify(log);
     } catch (error: any) {
       console.error("Error getting in-memory log:", error);
       return `Error getting in-memory log: ${error.message}`;
@@ -194,7 +205,12 @@ export const getInMemoryLogTool = tool(
     name: "get_in_memory_log",
     description: "Gets the commit log of the in-memory Git repository.",
     schema: z.object({
-      maxCount: z.number().int().min(1).optional().describe("The maximum number of log entries to return."),
+      depth: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe("The maximum number of log entries to return."),
     }),
   }
 );
@@ -208,9 +224,12 @@ export const getInMemoryLogTool = tool(
  */
 export const checkoutInMemoryBranchTool = tool(
   async ({ branchName }) => {
-    const git = getInMemoryGit();
     try {
-      await git.checkout(branchName);
+      await git.checkout({
+        fs,
+        dir,
+        ref: branchName,
+      });
       return `Checked out branch: ${branchName}.`;
     } catch (error: any) {
       console.error("Error checking out in-memory branch:", error);
@@ -219,7 +238,8 @@ export const checkoutInMemoryBranchTool = tool(
   },
   {
     name: "checkout_in_memory_branch",
-    description: "Checks out a specific branch in the in-memory Git repository.",
+    description:
+      "Checks out a specific branch in the in-memory Git repository.",
     schema: z.object({
       branchName: z.string().describe("The name of the branch to checkout."),
     }),
@@ -235,9 +255,12 @@ export const checkoutInMemoryBranchTool = tool(
  */
 export const createInMemoryBranchTool = tool(
   async ({ branchName }) => {
-    const git = getInMemoryGit();
     try {
-      await git.branch([branchName]);
+      await git.branch({
+        fs,
+        dir,
+        ref: branchName,
+      });
       return `Created new branch: ${branchName}.`;
     } catch (error: any) {
       console.error("Error creating in-memory branch:", error);
@@ -254,30 +277,50 @@ export const createInMemoryBranchTool = tool(
 );
 
 /**
- * Gets the diff between two files or commits in the in-memory Git repository.
+ * Compares two files in the in-memory file system and returns the diff.
  * @function
  * @param {object} input - The input object.
- * @param {string} input.from - The source (e.g., commit hash, branch name, file path).
- * @param {string} input.to - The target (e.g., commit hash, branch name, file path).
- * @returns {Promise<string>} The diff string or an error message.
+ * @param {string} input.filePath1 - The path to the first file.
+ * @param {string} input.filePath2 - The path to the second file.
+ * @returns {Promise<string>} The diff between the two files or an error message.
  */
 export const diffInMemoryFilesTool = tool(
-  async ({ from, to }) => {
-    const git = getInMemoryGit();
+  async ({ filePath1, filePath2 }) => {
     try {
-      const diff = await git.diff([from, to]);
-      return diff;
+      const content1 = fs.readFileSync(filePath1, "utf-8").toString();
+      const content2 = fs.readFileSync(filePath2, "utf-8").toString();
+
+      // A simple diff implementation (can be replaced with a more robust diffing library)
+      const diff = `--- a/${filePath1}\n+++ b/${filePath2}\n`;
+      const lines1 = content1.split('\n');
+      const lines2 = content2.split('\n');
+
+      let diffContent = "";
+      for (let i = 0; i < Math.max(lines1.length, lines2.length); i++) {
+        const line1 = lines1[i] || "";
+        const line2 = lines2[i] || "";
+
+        if (line1 !== line2) {
+          if (line1 !== "") diffContent += `- ${line1}\n`;
+          if (line2 !== "") diffContent += `+ ${line2}\n`;
+        } else {
+          diffContent += `  ${line1}\n`;
+        }
+      }
+
+      return diff + diffContent;
     } catch (error: any) {
-      console.error("Error getting in-memory diff:", error);
-      return `Error getting in-memory diff: ${error.message}`;
+      console.error("Error diffing in-memory files:", error);
+      return `Error diffing in-memory files: ${error.message}`;
     }
   },
   {
     name: "diff_in_memory_files",
-    description: "Gets the diff between two files or commits in the in-memory Git repository.",
+    description:
+      "Compares two files in the in-memory file system and returns the diff.",
     schema: z.object({
-      from: z.string().describe("The source (e.g., commit hash, branch name, file path)."),
-      to: z.string().describe("The target (e.g., commit hash, branch name, file path)."),
+      filePath1: z.string().describe("The path to the first file."),
+      filePath2: z.string().describe("The path to the second file."),
     }),
   }
 );

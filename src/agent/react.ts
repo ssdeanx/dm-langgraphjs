@@ -1,19 +1,19 @@
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { model } from "../config/googleProvider.js";
 import { MemorySaver } from "@langchain/langgraph";
 import { createReactAgent, ToolNode } from "@langchain/langgraph/prebuilt";
 import { StateGraph, END } from "@langchain/langgraph";
-import { MessagesState, AgentType } from "./state";
+import { MessagesState, AgentType } from "../agent/state.js";
 import { BaseMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 
 // Import all tools
-import { tavilyTool } from "../tools/tavily";
+import { tavilyTool } from "../tools/tavily.js";
 import { evaluateExpressionTool, addNumbersTool, subtractNumbersTool, multiplyNumbersTool, divideNumbersTool, powerTool, sqrtTool, sinTool, cosTool, tanTool, logTool, absTool, roundTool, floorTool, ceilTool } from "../tools/calculator";
 import { listRepositoriesTool, getFileContentTool, createIssueTool, createRepositoryTool, deleteRepositoryTool, createPullRequestTool, mergePullRequestTool, listPullRequestsTool, addIssueCommentTool, listIssuesTool, updateIssueTool, listCommitsTool, getFileTreeTool } from "../tools/github";
 import { cloneRepositoryTool, readInMemoryFileTool, listInMemoryFilesTool, getInMemoryFileStatsTool, commitInMemoryChangesTool, getInMemoryLogTool, checkoutInMemoryBranchTool, createInMemoryBranchTool, diffInMemoryFilesTool } from "../tools/local_git";
-import { extractTextFromUrlTool, extractHtmlFromUrlTool, extractElementsBySelectorTool, crawlWebsiteTool } from "../tools/web_scraping";
+import { extractTextFromUrlTool, extractHtmlFromUrlTool, extractElementsBySelectorTool, crawlWebsiteTool } from "../tools/web_scraping.js";
 
-const model = new ChatGoogleGenerativeAI({ temperature: 0 });
+
 
 // Define the tools for the agent to use
 const agentTools = [

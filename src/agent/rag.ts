@@ -1,6 +1,4 @@
-
-
-import { ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
+import { model, embeddings } from "../config/googleProvider.js";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { createRetrieverTool } from "langchain/tools/retriever";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
@@ -8,14 +6,14 @@ import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { Document } from "@langchain/core/documents";
 import { glob } from "glob";
 import * as fs from "fs/promises";
-import { parsePdfTool, convertDocxToTextTool, parseCsvTool, parseXmlTool, extractTextFromFileTool } from "../tools/document_processing";
+import { parsePdfTool, convertDocxToTextTool, parseCsvTool, parseXmlTool, extractTextFromFileTool } from "../tools/document_processing.js";
 import { StateGraph, END } from "@langchain/langgraph";
-import { MessagesState } from "./state";
+import { MessagesState } from "./state.js";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { AIMessage } from "@langchain/core/messages";
 
-const model = new ChatGoogleGenerativeAI({ temperature: 0 });
-const embeddings = new GoogleGenerativeAIEmbeddings();
+
+
 
 // Initialize retriever from Docs directory
 async function initializeRetriever() {
@@ -30,6 +28,8 @@ async function initializeRetriever() {
   const textSplitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000 });
   const splitDocs = await textSplitter.splitDocuments(docs);
 
+  // You must provide an embeddings instance as the second argument.
+  // Replace `model.embeddings` with your actual embeddings object if different.
   const vectorStore = await MemoryVectorStore.fromDocuments(splitDocs, embeddings);
   return vectorStore.asRetriever();
 }

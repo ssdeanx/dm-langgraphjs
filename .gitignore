@@ -25,3 +25,7 @@ dist
 .specstory/**/*.md
 .specstory/**/*.json
 GEMINI.md
+
+*ipynb
+llm.txt
+.roo/mcp.json

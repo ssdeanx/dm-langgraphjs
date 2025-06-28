@@ -1,8 +1,7 @@
-
-import { StateGraph, END } from "@langchain/langgraph";
+import { StateGraph, END, Annotation, START } from "@langchain/langgraph";
 import { BaseMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
-import { createSimulatedUser } from "./simulated_user";
-import { graph as chatBotGraph } from "../agent/graph"; // Import your main chatbot graph
+import { createSimulatedUser } from "./simulated_user.js";
+import { graph as chatBotGraph } from "../agent/graph.js"; // Import your main chatbot graph
 
 /**
  * Defines the state for the chatbot evaluation workflow.
@@ -19,8 +18,12 @@ interface EvaluationState {
  */
 async function userNode(state: EvaluationState): Promise<Partial<EvaluationState>> {
   const simulatedUser = await createSimulatedUser("You are a customer trying to get a refund for a trip taken 5 years ago. Be extremely persistent.");
-  const response = await simulatedUser.invoke({ messages: state.messages });
-  return { messages: [new HumanMessage(response.content)] };
+  const response = await simulatedUser.invoke(state.messages);
+  // Ensure content is a string for HumanMessage
+  const content = typeof response.content === "string"
+    ? response.content
+    : JSON.stringify(response.content);
+  return { messages: [new HumanMessage(content)] };
 }
 
 /**
@@ -31,7 +34,12 @@ async function userNode(state: EvaluationState): Promise<Partial<EvaluationState
 async function chatBotNode(state: EvaluationState): Promise<Partial<EvaluationState>> {
   // Invoke your main chatbot graph here
   const response = await chatBotGraph.invoke({ messages: state.messages });
-  return { messages: [new AIMessage(response.messages[response.messages.length - 1].content)] };
+  const content = response.messages[response.messages.length - 1].content;
+  // Ensure content is a string for AIMessage
+  const messageContent = typeof content === "string"
+    ? content
+    : JSON.stringify(content);
+  return { messages: [new AIMessage(messageContent)] };
 }
 
 /**
@@ -41,7 +49,10 @@ async function chatBotNode(state: EvaluationState): Promise<Partial<EvaluationSt
  */
 function shouldContinue(state: EvaluationState): string {
   const lastMessage = state.messages[state.messages.length - 1];
-  if (lastMessage.content.includes("FINISHED")) {
+  const content = typeof lastMessage.content === "string"
+    ? lastMessage.content
+    : JSON.stringify(lastMessage.content);
+  if (content.includes("FINISHED")) {
     return END;
   }
   // Alternate turns between user and chatbot
@@ -51,25 +62,28 @@ function shouldContinue(state: EvaluationState): string {
   return "user";
 }
 
-/**
- * Defines the chatbot evaluation workflow.
- * @type {StateGraph<EvaluationState>}
- */
-const evaluationWorkflowBuilder = new StateGraph<EvaluationState>({
-  channels: {
-    messages: {
-      value: (x, y) => x.concat(y),
-      default: () => [],
-    },
-  },
+const EvaluationStateAnnotation = Annotation.Root({
+  messages: Annotation<BaseMessage[]>({
+    reducer: (x, y) => x.concat(y),
+    default: () => [],
+  }),
 });
+
+const evaluationWorkflowBuilder = new StateGraph(EvaluationStateAnnotation);
 
 evaluationWorkflowBuilder.addNode("user", userNode);
 evaluationWorkflowBuilder.addNode("chatbot", chatBotNode);
 
-evaluationWorkflowBuilder.addEdge("user", "chatbot");
-evaluationWorkflowBuilder.addEdge("chatbot", "user");
+evaluationWorkflowBuilder.addConditionalEdges(
+  "chatbot" as any,
+  shouldContinue,
+  {
+    user: "user",
+    [END]: END,
+  } as any // <-- Cast to any to satisfy TypeScript
+);
+evaluationWorkflowBuilder.addEdge("user" as any, "chatbot" as any);
 
-evaluationWorkflowBuilder.setEntryPoint("user");
+evaluationWorkflowBuilder.addEdge(START, "user" as any);
 
 export const evaluationWorkflow = evaluationWorkflowBuilder.compile();

@@ -1,8 +1,7 @@
-
 import { Client } from "@langchain/langgraph-sdk";
 import * as readline from "readline";
 import { v4 as uuidv4 } from "uuid";
-import { LangChainTracer } from "langsmith/traceable";
+import { trace } from "langsmith/traceable";
 import { createLogger, format, transports } from "winston";
 
 const client = new Client({ apiUrl: "http://localhost:2024" });
@@ -68,8 +67,8 @@ async function main() {
     logger.info("Agent Response:");
 
     const streamResponse = client.runs.stream(
-      null, // Threadless run
-      "agent", // Assistant ID
+      threadId,
+      "agent",
       {
         input: {
           messages: [
@@ -80,28 +79,27 @@ async function main() {
           ],
         },
         streamMode: "messages",
-        configurable: {
-          thread_id: threadId,
-        },
-        callbacks: [new LangChainTracer()],
       }
     );
 
     for await (const chunk of streamResponse) {
-        if (chunk.event === "on_chat_model_stream") {
-            const content = chunk.data.chunk?.content;
+        if (chunk.event === "messages/partial") {
+            const content = chunk.data?.[0]?.content;
             if (content) {
-                process.stdout.write(content);
+                process.stdout.write(String(content));
             }
-        } else if (chunk.event === "on_tool_start") {
-            logger.info(`\nTool Start: ${chunk.name}`);
-            logger.info(`Tool Input: ${JSON.stringify(chunk.data.input, null, 2)}`);
-        } else if (chunk.event === "on_tool_end") {
-            logger.info(`Tool End: ${chunk.name}`);
-            logger.info(`Tool Output: ${JSON.stringify(chunk.data.output, null, 2)}`);
-        } else if (chunk.event === "on_llm_end") {
-            // This event signifies the end of an LLM call, useful for debugging
-            // logger.debug(`LLM End: ${JSON.stringify(chunk.data, null, 2)}`);
+        } else if (chunk.event === "metadata") {
+            const metadataEvent = chunk as { event: string; data: any; metadata: { name: string } };
+            if (metadataEvent.metadata.name === "tool_start") {
+                logger.info(`\nTool Start: ${metadataEvent.metadata.name}`);
+                logger.info(`Tool Input: ${JSON.stringify(metadataEvent.data.input, null, 2)}`);
+            } else if (metadataEvent.metadata.name === "tool_end") {
+                logger.info(`Tool End: ${metadataEvent.metadata.name}`);
+                logger.info(`Tool Output: ${JSON.stringify(metadataEvent.data.output, null, 2)}`);
+            } else if (metadataEvent.metadata.name === "llm_end") {
+                // This event signifies the end of an LLM call, useful for debugging
+                // logger.debug(`LLM End: ${JSON.stringify(metadataEvent.data, null, 2)}`);
+            }
         }
     }
     logger.info("\n");
@@ -109,3 +107,4 @@ async function main() {
 }
 
 main();
+

@@ -1,12 +1,12 @@
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { model } from "../config/googleProvider.js";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { MessagesState } from "./state";
+import { MessagesState } from "./state.js";
 import { BaseMessage, AIMessage } from "@langchain/core/messages";
-import { putMemoryTool, searchMemoryTool } from "../tools/memory";
+import { putMemoryTool, searchMemoryTool } from "../tools/memory.js";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { StateGraph, END } from "@langchain/langgraph";
 
-const model = new ChatGoogleGenerativeAI({ temperature: 0 });
+
 
 const conversationalTools = [putMemoryTool, searchMemoryTool];
 const conversationalToolNode = new ToolNode(conversationalTools);

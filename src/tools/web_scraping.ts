@@ -120,8 +120,11 @@ export const crawlWebsiteTool = tool(
       maxRequestsPerCrawl: maxRequests,
       maxRequestsPerMinute: 60, // Limit to 60 requests per minute to be polite
       maxConcurrency: 5, // Limit concurrent requests
-      maxDepth,
       async requestHandler({ request, $ }) {
+        // Enforce maxDepth manually
+        if ((request as any).depth !== undefined && (request as any).depth > maxDepth) {
+          return;
+        }
         console.log(`Processing ${request.url}...`);
         const text = $("body").text();
         crawledData.push({ url: request.url, text });

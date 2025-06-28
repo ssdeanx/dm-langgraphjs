@@ -22,7 +22,7 @@ export const parsePdfTool = tool(
   async ({ filePath }) => {
     try {
       const dataBuffer = await fs.readFile(filePath);
-      const data = await pdfParse(dataBuffer);
+      const data = await pdfParse.default(dataBuffer);
       return data.text;
     } catch (error: any) {
       console.error("Error parsing PDF:", error);

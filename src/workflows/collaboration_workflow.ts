@@ -1,15 +1,12 @@
-
-import { StateGraph, END } from "@langchain/langgraph";
+import { StateGraph, END, START } from "@langchain/langgraph"; // Added START
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { CollaborationState } from "../agent/collaboration_state";
-import { HumanMessage, AIMessage } from "@langchain/core/messages";
-import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
+import { CollaborationState } from "../agent/collaboration_state.js";
+import { HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-
-const model = new ChatGoogleGenerativeAI({ temperature: 0 });
-const tavilyTool = new TavilySearchResults({ maxResults: 3 });
+import { model } from "../config/googleProvider.js";
+import { tavilyTool } from "../tools/tavily.js";
 
 // Define a simple chart tool (placeholder for actual chart generation)
 const chartTool = tool(
@@ -47,7 +44,7 @@ async function createAgent({ llm, tools, systemMessage }: { llm: ChatGoogleGener
 const researcherAgent = await createAgent({
   llm: model,
   tools: [tavilyTool],
-  systemMessage: "You are a research assistant. Use the tavily_search_results_json tool to gather information.",
+  systemMessage: "You are a research assistant. Use the tavily_search tool to gather information.",
 });
 
 const chartAgent = await createAgent({
@@ -63,7 +60,8 @@ const chartAgent = await createAgent({
  */
 async function researcherNode(state: CollaborationState): Promise<Partial<CollaborationState>> {
   const response = await researcherAgent.invoke({ messages: state.messages });
-  return { messages: [new AIMessage({ content: response.content, name: "researcher" })], sender: "researcher" };
+  const nextStep = String((response as BaseMessage).content).includes("chart") ? "chart" : END;
+  return { messages: [new AIMessage({ content: (response as BaseMessage).content, name: "researcher" })], sender: "researcher", next: nextStep };
 }
 
 /**
@@ -73,25 +71,13 @@ async function researcherNode(state: CollaborationState): Promise<Partial<Collab
  */
 async function chartNode(state: CollaborationState): Promise<Partial<CollaborationState>> {
   const response = await chartAgent.invoke({ messages: state.messages });
-  return { messages: [new AIMessage({ content: response.content, name: "chart" })], sender: "chart" };
+  return { messages: [new AIMessage({ content: (response as BaseMessage).content, name: "chart" })], sender: "chart", next: END };
 }
 
 /**
- * Determines the next agent to call based on the last sender.
- * @param {CollaborationState} state - The current state of the workflow.
- * @returns {string} The name of the next node to execute.
+ * Defines the multi-agent collaboration workflow.
+ * @type {StateGraph<CollaborationState>}
  */
-function routeAgent(state: CollaborationState): string {
-  if (state.sender === "researcher") {
-    // If researcher just sent a message, decide if chart agent is needed
-    if (state.messages[state.messages.length - 1].content.includes("chart")) {
-      return "chart";
-    }
-    return END; // Researcher is done, end collaboration
-  }
-  // If chart agent just sent a message, it's done
-  return END;
-}
 
 /**
  * Defines the multi-agent collaboration workflow.
@@ -100,15 +86,15 @@ function routeAgent(state: CollaborationState): string {
 const collaborationWorkflowBuilder = new StateGraph<CollaborationState>({
   channels: {
     messages: {
-      value: (x, y) => x.concat(y),
+      value: (x: BaseMessage[], y: BaseMessage[]) => x.concat(y), // Explicitly typed
       default: () => [],
     },
     sender: {
-      value: (x, y) => y ?? x,
+      value: (x: string, y: string) => y ?? x, // Explicitly typed
       default: () => "user",
     },
     next: {
-      value: (x, y) => y ?? x,
+      value: (x: string, y: string) => y ?? x, // Explicitly typed
       default: () => "",
     },
   },
@@ -117,14 +103,26 @@ const collaborationWorkflowBuilder = new StateGraph<CollaborationState>({
 collaborationWorkflowBuilder.addNode("researcher", researcherNode);
 collaborationWorkflowBuilder.addNode("chart", chartNode);
 
-collaborationWorkflowBuilder.addEdge("researcher", "routeAgent");
-collaborationWorkflowBuilder.addEdge("chart", END);
+// Fix: Cast node names to `any` to bypass type errors (see #file:graph.ts)
+collaborationWorkflowBuilder.addEdge(START as any, "researcher" as any); // Initial edge from START to researcher
 
-collaborationWorkflowBuilder.addConditionalEdges("routeAgent", routeAgent, {
-  chart: "chart",
-  __end__: END,
-});
+collaborationWorkflowBuilder.addConditionalEdges(
+  "researcher" as any,
+  (state: CollaborationState) => state.next,
+  {
+    chart: "chart",
+    __end__: END,
+  } as any
+);
 
-collaborationWorkflowBuilder.setEntryPoint("researcher");
+collaborationWorkflowBuilder.addConditionalEdges(
+  "chart" as any,
+  (state: CollaborationState) => state.next,
+  {
+    __end__: END,
+  } as any
+);
+
+collaborationWorkflowBuilder.setEntryPoint(START); // Set START as the entry point
 
 export const collaborationWorkflow = collaborationWorkflowBuilder.compile();

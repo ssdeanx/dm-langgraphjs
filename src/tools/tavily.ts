@@ -1,6 +1,9 @@
-import { TavilySearchResults } from '@langchain/community/tools/tavily_search';
+import { TavilySearch } from '@langchain/tavily';
 import { z } from 'zod';
 import { tool } from '@langchain/core/tools';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 /**
  * @module TavilyTools
@@ -31,38 +34,37 @@ import { tool } from '@langchain/core/tools';
 export const tavilyTool = tool(
   async (input: {
     query: string;
-    search_depth?: 'basic' | 'advanced';
-    include_answer?: boolean;
-    include_images?: boolean;
-    include_raw_content?: boolean;
-    max_results?: number;
-    min_results?: number;
-    exclude_domains?: string[];
-    include_domains?: string[];
-    start_date?: string;
-    end_date?: string;
+    searchDepth?: 'basic' | 'advanced';
+    includeAnswer?: boolean;
+    includeImages?: boolean;
+    includeRawContent?: boolean;
+    maxResults?: number;
+    minResults?: number;
+    excludeDomains?: string[];
+    includeDomains?: string[];
+    startDate?: string;
+    endDate?: string;
     unfilter?: boolean;
-    follow_links?: boolean;
+    followLinks?: boolean;
     context?: string;
   }) => {
-    const tavily = new TavilySearchResults({
-      apiKey: process.env.TAVILY_API_KEY, // Assuming API key is available via process.env
-      maxResults: input.max_results || 5,
-    });
+    const tavily = new TavilySearch();
 
     try {
-      const results = await tavily.invoke(input.query, {
-        search_depth: input.search_depth,
-        include_answer: input.include_answer,
-        include_images: input.include_images,
-        include_raw_content: input.include_raw_content,
-        min_results: input.min_results,
-        exclude_domains: input.exclude_domains,
-        include_domains: input.include_domains,
-        start_date: input.start_date,
-        end_date: input.end_date,
+      const results = await tavily.invoke({
+        query: input.query,
+        searchDepth: input.searchDepth,
+        includeAnswer: input.includeAnswer,
+        includeImages: input.includeImages,
+        includeRawContent: input.includeRawContent,
+        maxResults: input.maxResults, // Pass maxResults here if supported
+        minResults: input.minResults,
+        excludeDomains: input.excludeDomains,
+        includeDomains: input.includeDomains,
+        startDate: input.startDate,
+        endDate: input.endDate,
         unfilter: input.unfilter,
-        follow_links: input.follow_links,
+        followLinks: input.followLinks,
         context: input.context,
       });
       return JSON.stringify(results);
@@ -76,19 +78,20 @@ export const tavilyTool = tool(
     description: "Performs advanced web searches using Tavily. Useful for general knowledge, current events, and detailed information retrieval.",
     schema: z.object({
       query: z.string().describe("The search query string."),
-      search_depth: z.enum(['basic', 'advanced']).optional().describe("The depth of the search. 'basic' for quick results, 'advanced' for more comprehensive results."),
-      include_answer: z.boolean().optional().describe("Whether to include a concise answer to the query."),
-      include_images: z.boolean().optional().describe("Whether to include images in the search results."),
-      include_raw_content: z.boolean().optional().describe("Whether to include the raw HTML content of the search results."),
-      max_results: z.number().int().min(1).optional().describe("The maximum number of search results to return."),
-      min_results: z.number().int().min(1).optional().describe("The minimum number of search results to return."),
-      exclude_domains: z.array(z.string()).optional().describe("A list of domains to exclude from the search results."),
-      include_domains: z.array(z.string()).optional().describe("A list of domains to include in the search results."),
-      start_date: z.string().optional().describe("The start date for filtering results (YYYY-MM-DD)."),
-      end_date: z.string().optional().describe("The end date for filtering results (YYYY-MM-DD)."),
+      searchDepth: z.enum(['basic', 'advanced']).optional().describe("The depth of the search. 'basic' for quick results, 'advanced' for more comprehensive results."),
+      includeAnswer: z.boolean().optional().describe("Whether to include a concise answer to the query."),
+      includeImages: z.boolean().optional().describe("Whether to include images in the search results."),
+      includeRawContent: z.boolean().optional().describe("Whether to include the raw HTML content of the search results."),
+      maxResults: z.number().int().min(1).optional().describe("The maximum number of search results to return."),
+      minResults: z.number().int().min(1).optional().describe("The minimum number of search results to return."),
+      excludeDomains: z.array(z.string()).optional().describe("A list of domains to exclude from the search results."),
+      includeDomains: z.array(z.string()).optional().describe("A list of domains to include in the search results."),
+      startDate: z.string().optional().describe("The start date for filtering results (YYYY-MM-DD)."),
+      endDate: z.string().optional().describe("The end date for filtering results (YYYY-MM-DD)."),
       unfilter: z.boolean().optional().describe("Whether to unfilter the search results (e.g., remove duplicates)."),
-      follow_links: z.boolean().optional().describe("Whether to follow links in the search results."),
+      followLinks: z.boolean().optional().describe("Whether to follow links in the search results."),
       context: z.string().optional().describe("Additional context for the search query."),
     }),
   }
 );
+

@@ -1,8 +1,7 @@
 
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { model } from "../config/googleProvider.js";
 import { BaseMessage } from "@langchain/core/messages";
 
-const model = new ChatGoogleGenerativeAI({ temperature: 0 });
 
 const supervisorPrompt = `You are a supervisor who needs to decide which agent to call next.
 
