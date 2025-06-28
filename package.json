@@ -2,7 +2,7 @@
   "name": "dm-langgraph",
   "version": "0.0.1",
   "description": "LangGraph workflow.",
-  "main": "my_app/graph.ts",
+  "main": "src/agent/graph.ts",
   "author": "ssdeanx",
   "license": "MIT",
   "private": true,
@@ -17,19 +17,43 @@
     "format:check": "prettier --check .",
     "lint:langgraph-json": "node scripts/checkLanggraphPaths.js",
     "lint:all": "npm run lint && npm run lint:langgraph-json && npm run format:check",
-    "test:all": "npm run test && npm run test:int && npm run lint:langgraph"
+    "test:all": "npm run test && npm run test:int && npm run lint:all"
   },
   "dependencies": {
     "@langchain/community": "^0.3.47",
     "@langchain/core": "^0.3.61",
     "@langchain/google-genai": "^0.2.13",
-    "@langchain/langgraph": "^0.3.5"
+    "@langchain/langgraph": "^0.3.5",
+    "@langchain/langgraph-checkpoint-postgres": "^0.0.5",
+    "@langchain/langgraph-sdk": "^0.0.87",
+    "@langchain/tavily": "^0.1.3",
+    "@langchain/textsplitters": "^0.1.0",
+    "canvas": "^3.1.2",
+    "cheerio": "^1.1.0",
+    "crawlee": "^3.13.9",
+    "langchain": "^0.3.29",
+    "mammoth": "^1.9.1",
+    "mathjs": "^14.5.2",
+    "memfs": "^4.17.2",
+    "mermaid": "^10.9.1",
+    "octokit": "^5.0.3",
+    "papaparse": "^5.5.3",
+    "pdf-parse": "^1.1.1",
+    "simple-git": "^3.28.0",
+    "tslab": "^1.0.22",
+    "uuid": "^11.1.0",
+    "winston": "^3.17.0",
+    "xml2js": "^0.6.2",
+    "zod": "^3.25.67"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@eslint/js": "^9.29.0",
     "@tsconfig/recommended": "^1.0.10",
     "@types/jest": "^30.0.0",
+    "@types/mermaid": "*",
+    "@types/papaparse": "^5.3.16",
+    "@types/winston": "^2.4.4",
     "@typescript-eslint/eslint-plugin": "^8.35.0",
     "@typescript-eslint/parser": "^8.35.0",
     "dotenv": "^16.6.0",
@@ -42,6 +66,7 @@
     "prettier": "^3.6.2",
     "release-please": "^17.1.0",
     "ts-jest": "^29.4.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }
 }

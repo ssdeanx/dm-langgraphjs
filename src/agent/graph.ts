@@ -1,97 +1,120 @@
-/**
- * Starter LangGraph.js Template
- * Make this code your own!
- */
-import { StateGraph } from "@langchain/langgraph";
-import { RunnableConfig } from "@langchain/core/runnables";
-import { StateAnnotation } from "./state.js";
-import { config } from "dotenv";
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { AIMessage } from "@langchain/core/messages";
 
-/**
- * Define a node, these do the work of the graph and should have most of the logic.
- * Must return a subset of the properties set in StateAnnotation.
- * @param state The current state of the graph.
- * @param config Extra parameters passed into the state graph.
- * @returns Some subset of parameters of the graph state, used to update the state
- * for the edges and nodes executed next.
- */
-config(); // Load environment variables from .env
 
-const model = new ChatGoogleGenerativeAI({
-  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY!,
-  model: process.env.GEMINI_MODEL || "gemini-2.5-pro",
-});
+import { StateGraph, END } from "@langchain/langgraph";
+import { AgentType, MessagesState } from "./state.js";
+import { ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
+import { Client } from "langsmith";
+import { traceable } from "langsmith/traceable";
+import { wrapSDK } from "langsmith/wrappers";
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import { LangGraphRunnableConfig } from "@langchain/langgraph";
+import { inMemoryStore } from "../memory/in_memory_store.js";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { reactAgent } from "./react.js";
+import { ragAgent } from "./rag.js";
+import { conversationalAgent } from "./conversational.js";
+import { researchWorkflow } from "../workflows/research_workflow.js";
+import { rewooWorkflow } from "../workflows/rewoo_workflow.js";
+import { planExecuteWorkflow } from "../workflows/plan_execute_workflow.js";
+import { selfRagWorkflow } from "../workflows/self_rag_workflow.js";
+import { cragWorkflow } from "../workflows/crag_workflow.js";
+import { collaborationWorkflow } from "../workflows/collaboration_workflow.js";
+import { researchTeamWorkflow } from "../workflows/research_team_workflow.js";
+import { documentWritingTeamWorkflow } from "../workflows/document_writing_team_workflow.js";
+import { reflectionWorkflow } from "../workflows/reflection_workflow.js";
+import { generateMermaidPng } from "../utils/graphVisualizer.js";
 
-const callModel = async (
-  state: typeof StateAnnotation.State,
-  _config: RunnableConfig,
-): Promise<typeof StateAnnotation.Update> => {
-  if (!state.messages.length) {
-    return { messages: [] };
-  }
-  let aiResponse;
-  let errors = state.errors || [];
-  let toolResults = state.toolResults || [];
-  let retrievedDocs = state.retrievedDocs || [];
-  let step = typeof state.step === "number" ? state.step + 1 : 1;
-  try {
-    aiResponse = await model.invoke(state.messages);
-    // Example: simulate tool usage and document retrieval
-    // (Replace with real tool/doc logic as needed)
-    toolResults = [...toolResults, { used: false, ts: Date.now() }];
-    retrievedDocs = [...retrievedDocs, { doc: "Sample doc", ts: Date.now() }];
-  } catch (err) {
-    errors = [...errors, (err as Error).message];
-    aiResponse = undefined;
-  }
+const model = traceable(new ChatGoogleGenerativeAI({ model: "gemini-2.5-pro", temperature: 0 }));
+const embeddings = traceable(new GoogleGenerativeAIEmbeddings());
+
+const langsmithClient = new Client();
+wrapSDK(langsmithClient);
+
+// 3. Define the supervisor
+const supervisorPrompt = ChatPromptTemplate.fromMessages([
+  ["system", "You are a supervisor tasked with managing a conversation between the following agents: react, rag, conversational, research, rewoo, plan_execute, self_rag, crag, collaboration, research_team, document_writing_team, reflection. Given the user's request, determine which agent should act next. If the task is complete, respond with 'FINISH'."],
+  ["human", "{input}"],
+]);
+
+const supervisor = async (state: MessagesState) => {
+  const lastMessage = state.messages[state.messages.length - 1];
+  const response = await model.invoke(
+    await supervisorPrompt.formatMessages({ input: lastMessage.content as string })
+  );
   return {
-    messages: aiResponse ? [...state.messages, aiResponse] : state.messages,
-    step,
-    toolResults,
-    retrievedDocs,
-    errors,
-    userProfile: state.userProfile,
-    conversationId: state.conversationId,
+    next: response.content as AgentType | "FINISH",
   };
 };
 
-/**
- * Routing function: Determines whether to continue research or end the builder.
- * This function decides if the gathered information is satisfactory or if more research is needed.
- *
- * @param state - The current state of the research builder
- * @returns Either "callModel" to continue research or END to finish the builder
- */
-export const route = (
-  state: typeof StateAnnotation.State,
-): "__end__" | "callModel" => {
-  // End if the last message is from the assistant
-  if (
-    state.messages.length > 0 &&
-    state.messages[state.messages.length - 1] instanceof AIMessage
-  ) {
-    return "__end__";
-  }
-  return "callModel";
-};
+// 4. Define the graph
+const workflow = new StateGraph<MessagesState>({
+  channels: {
+    messages: {
+      value: (x, y) => x.concat(y),
+      default: () => [],
+    },
+    next: {
+      value: (x, y) => y ?? x,
+      default: () => undefined,
+    },
+    scratchpad: {
+      value: (x, y) => y ?? x,
+      default: () => undefined,
+    },
+  },
+});
 
-// Finally, create the graph itself.
-const builder = new StateGraph(StateAnnotation)
-  // Add the nodes to do the work.
-  // Chaining the nodes together in this way
-  // updates the types of the StateGraph instance
-  // so you have static type checking when it comes time
-  // to add the edges.
-  .addNode("callModel", callModel)
-  // Regular edges mean "always transition to node B after node A is done"
-  // The "__start__" and "__end__" nodes are "virtual" nodes that are always present
-  // and represent the beginning and end of the builder.
-  .addEdge("__start__", "callModel")
-  // Conditional edges optionally route to different nodes (or end)
-  .addConditionalEdges("callModel", route);
+workflow.addNode("react", reactAgent);
+workflow.addNode("rag", ragAgent);
+workflow.addNode("conversational", conversationalAgent);
+workflow.addNode("research", researchWorkflow);
+workflow.addNode("rewoo", rewooWorkflow);
+workflow.addNode("plan_execute", planExecuteWorkflow);
+workflow.addNode("self_rag", selfRagWorkflow);
+workflow.addNode("crag", cragWorkflow);
+workflow.addNode("collaboration", collaborationWorkflow);
+workflow.addNode("research_team", researchTeamWorkflow);
+workflow.addNode("document_writing_team", documentWritingTeamWorkflow);
+workflow.addNode("reflection", reflectionWorkflow);
+workflow.addNode("supervisor", supervisor);
 
-export const graph = builder.compile();
+workflow.addConditionalEdges("supervisor", (state) => state.next as AgentType, {
+  react: "react",
+  rag: "rag",
+  conversational: "conversational",
+  research: "research",
+  rewoo: "rewoo",
+  plan_execute: "plan_execute",
+  self_rag: "self_rag",
+  crag: "crag",
+  collaboration: "collaboration",
+  research_team: "research_team",
+  document_writing_team: "document_writing_team",
+  reflection: "reflection",
+  FINISH: END,
+});
 
-graph.name = "New Agent";
+// After each agent, return to the supervisor for the next turn
+workflow.addEdge("react", "supervisor");
+workflow.addEdge("rag", "supervisor");
+workflow.addEdge("conversational", "supervisor");
+workflow.addEdge("research", "supervisor");
+workflow.addEdge("rewoo", "supervisor");
+workflow.addEdge("plan_execute", "supervisor");
+workflow.addEdge("self_rag", "supervisor");
+workflow.addEdge("crag", "supervisor");
+workflow.addEdge("collaboration", "supervisor");
+workflow.addEdge("research_team", "supervisor");
+workflow.addEdge("document_writing_team", "supervisor");
+workflow.addEdge("reflection", "supervisor");
+
+// The entry point is the supervisor
+workflow.setEntryPoint("supervisor");
+
+export const graph = workflow.compile({
+  store: inMemoryStore,
+});
+
+(async () => {
+  await generateMermaidPng(graph, "static/graph.png");
+})();

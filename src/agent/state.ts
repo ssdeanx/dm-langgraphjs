@@ -1,57 +1,24 @@
-import { BaseMessage, BaseMessageLike } from "@langchain/core/messages";
-import { Annotation, messagesStateReducer } from "@langchain/langgraph";
+import { BaseMessage } from '@langchain/core/messages';
 
 /**
- * A graph's StateAnnotation defines three main things:
- * 1. The structure of the data to be passed between nodes (which "channels" to read from/write to and their types)
- * 2. Default values for each field
- * 3. Reducers for the state's. Reducers are functions that determine how to apply updates to the state.
- * See [Reducers](https://langchain-ai.github.io/langgraphjs/concepts/low_level/#reducers) for more information.
+ * The prebuilt ReAct agent works with a simple list of messages.
+ * We can represent this as a "MessagesState" object, which is the
+ * expected input format for the agent.
  */
+import { ResearchState } from "./research_state.js";
 
-// This is the primary state of your agent, where you can store any information
-export const StateAnnotation = Annotation.Root({
-  /**
-   * Messages track the primary execution state of the agent.
-   *
-   * Typically accumulates a pattern of:
-   *
-   * 1. HumanMessage - user input
-   * 2. AIMessage with .tool_calls - agent picking tool(s) to use to collect
-   *     information
-   * 3. ToolMessage(s) - the responses (or errors) from the executed tools
-   *
-   *     (... repeat steps 2 and 3 as needed ...)
-   * 4. AIMessage without .tool_calls - agent responding in unstructured
-   *     format to the user.
-   *
-   * 5. HumanMessage - user responds with the next conversational turn.
-   *
-   *     (... repeat steps 2-5 as needed ... )
-   *
-   * Merges two lists of messages or message-like objects with role and content,
-   * updating existing messages by ID.
-   *
-   * Message-like objects are automatically coerced by `messagesStateReducer` into
-   * LangChain message classes. If a message does not have a given id,
-   * LangGraph will automatically assign one.
-   *
-   * By default, this ensures the state is "append-only", unless the
-   * new message has the same ID as an existing message.
-   *
-   * Returns:
-   *     A new list of messages with the messages from \`right\` merged into \`left\`.
-   *     If a message in \`right\` has the same ID as a message in \`left\`, the
-   *     message from \`right\` will replace the message from \`left\`.`
-   */
-  messages: Annotation<BaseMessage[], BaseMessageLike[]>({
-    reducer: messagesStateReducer,
-    default: () => [],
-  }),
-  userProfile: Annotation<Record<string, unknown>>(),
-  conversationId: Annotation<string>(),
-  retrievedDocs: Annotation<unknown[]>(),
-  step: Annotation<number>(),
-  toolResults: Annotation<unknown[]>(),
-  errors: Annotation<string[]>(),
-});
+import { RewooState } from "./rewoo_state.js";
+
+import { PlanExecuteState } from "./plan_execute_state.js";
+
+import { SelfRagState } from "./self_rag_state.js";
+
+import { CragState } from "./crag_state.js";
+
+import { CollaborationState } from "./collaboration_state.js";
+
+import { ReflectionState } from "./reflection_state.js";
+
+export type AgentType = "react" | "rag" | "conversational" | "research" | "rewoo" | "plan_execute" | "self_rag" | "crag" | "collaboration" | "research_team" | "document_writing_team" | "reflection" | "FINISH";
+
+export type MessagesState = { messages: BaseMessage[]; next?: AgentType; scratchpad?: string; } | ResearchState | RewooState | PlanExecuteState | SelfRagState | CragState | CollaborationState | MessagesState | ReflectionState;
