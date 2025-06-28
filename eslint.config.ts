@@ -2,12 +2,12 @@ import { FlatCompat } from "@eslint/eslintrc";
 import tseslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
 
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
+// Remove import rules if the plugin is not installed or not needed
+// import importPlugin from "eslint-plugin-import"; // Uncomment if you install eslint-plugin-import
+
+const compat = new FlatCompat({ baseDirectory: __dirname });
 
 export default [
-  ...compat.extends("eslint:recommended"),
   ...compat.extends("plugin:@typescript-eslint/recommended"),
   ...compat.extends("prettier"),
   {
@@ -22,10 +22,10 @@ export default [
     },
     plugins: {
       "@typescript-eslint": tseslint,
+      // "import": importPlugin, // Uncomment if you install eslint-plugin-import
     },
     rules: {
       "no-process-env": 2,
-      "no-instanceof/no-instanceof": 2,
       "@typescript-eslint/explicit-module-boundary-types": 0,
       "@typescript-eslint/no-empty-function": 0,
       "@typescript-eslint/no-shadow": 0,
@@ -36,12 +36,13 @@ export default [
       "@typescript-eslint/no-misused-promises": "error",
       camelcase: 0,
       "class-methods-use-this": 0,
-      "import/extensions": [2, "ignorePackages"],
-      "import/no-extraneous-dependencies": [
-        "error",
-        { devDependencies: ["**/*.test.ts"] },
-      ],
-      "import/no-unresolved": 0,
+      // Remove the following rules if you do NOT have eslint-plugin-import installed:
+      // "import/extensions": [2, "ignorePackages"],
+      // "import/no-extraneous-dependencies": [
+      //   "error",
+      //   { devDependencies: ["**/*.test.ts"] },
+      // ],
+      // "import/no-unresolved": 0,
       "import/prefer-default-export": 0,
       "keyword-spacing": "error",
       "max-classes-per-file": 0,
