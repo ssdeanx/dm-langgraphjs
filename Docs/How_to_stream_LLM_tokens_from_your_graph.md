@@ -78,6 +78,21 @@ const boundModel = model.bindTools(tools);
 We can now put it all together.
 
 ```
-import { StateGraph, END } from "@langchain/langgraph"; import { AIMessage } from "@langchain/core/messages"; const routeMessage = (state: typeof StateAnnotation.State) => { const { messages } = state; const lastMessage = messages[messages.length - 1] as AIMessage; // If no tools are called, we can finish (respond to the user) if (!lastMessage?.tool_calls?.length) { return END; } // Otherwise if there is, we continue and call the tools return "tools"; }; const callModel = async ( state: typeof StateAnnotation.State, ) => { // For versions of @langchain/core < 0.2.3, you must call `.stream()` // and aggregate the message from chunks instead of calling `.invoke()`. const { messages } = state; const responseMessage = await boundModel.invoke(messages); return { messages: [responseMessage] }; }; const workflow = new StateGraph(StateAnnotation) .addNode("agent", callModel) .addNode("tools", toolNode) .addEdge("__start__", "agent") .addConditionalEdges("agent", routeMessage) .addE
+import { StateGraph, END } from "@langchain/langgraph"; import { AIMessage } from "@langchain/core/messages"; const routeMessage = (state: typeof StateAnnotation.State) => { const { messages } = state; const lastMessage = messages[messages.length - 1] as AIMessage; // If no tools are called, we can finish (respond to the user) if (!lastMessage?.tool_calls?.length) { return END; } // Otherwise if there is, we continue and call the tools return "tools"; }; const callModel = async ( state: typeof StateAnnotation.State, ) => { // For versions of @langchain/core < 0.2.3, you must call `.stream()` // and aggregate the message from chunks instead of calling `.invoke()`. const { messages } = state; const responseMessage = await boundModel.invoke(messages); return { messages: [responseMessage] }; }; const workflow = new StateGraph(StateAnnotation) .addNode("agent", callModel) .addNode("tools", toolNode) .addEdge("__start__", "agent") .addConditionalEdges("agent", routeMessage) .addEdge("tools", "agent"); const graph = workflow.compile();
+```
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+## Stream tokens¶
+
+We can now interact with the agent. Between interactions you can get and update state.
+
+```
+let inputs = { messages: [{ role: "user", content: "what's the weather in sf" }] }; for await ( const chunk of await graph.stream(inputs, { streamMode: "stream_tokens", }) ) { console.log(chunk); }
+```
+
+```
+{ agent: '' } { agent: 'The' } { agent: ' weather' } { agent: ' in' } { agent: ' San' } { agent: ' Francisco' } { agent: ' is' } { agent: ' cold' } { agent: ',' } { agent: ' with' } { agent: ' a' } { agent: ' low' } { agent: ' of' } { agent: ' 3' } { agent: '°C.' } { agent: '' }
+```
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

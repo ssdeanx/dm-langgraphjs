@@ -49,6 +49,37 @@ Note that you can't call this method outside of a LangGraph node since dispatchC
 Next, set up the actual tool function and the node that will call it when the model populates a tool call:
 
 ```
-const getItems = async ({ place }: { place: string }) => { if (place.toLowerCase().includes("bed")) { // For under the bed return "socks, shoes and dust bunnies"; } else if (place.toLowerCase().includes("shelf")) { // For 'shelf' return "books, pencils and pictures"; } else { // if the agent decides to ask about a different place return "cat snacks"; } }; const callTools = async (state: typeof StateAnnotation.State) => { const { messages } = state; const mostRecentMessage = messages[messages.length - 1]; const toolCalls = (mostRecentMessage as OpenAI.ChatCompletionAssistantMessageParam).tool_calls; if (toolCalls === undefined || toolCalls.length === 0) { throw new Error("No tool calls passed to node."); } const toolNameMap = { get_items: getItems, }; const functionName = toolCalls[0].function.name; const functionArguments = JSON.parse(toolCalls[0].function.arguments); const response = await toolNameMap[functionName](functionArguments); const toolMessage = { tool_call_id: toolCalls[0].id, role: "tool" as const
+const getItems = async ({ place }: { place: string }) => { if (place.toLowerCase().includes("bed")) { // For under the bed return "socks, shoes and dust bunnies"; } else if (place.toLowerCase().includes("shelf")) { // For 'shelf' return "books, pencils and pictures"; } else { // if the agent decides to ask about a different place return "cat snacks"; } }; const callTools = async (state: typeof StateAnnotation.State) => { const { messages } = state; const mostRecentMessage = messages[messages.length - 1]; const toolCalls = (mostRecentMessage as OpenAI.ChatCompletionAssistantMessageParam).tool_calls; if (toolCalls === undefined || toolCalls.length === 0) { throw new Error("No tool calls passed to node."); } const toolNameMap = { get_items: getItems, }; const functionName = toolCalls[0].function.name; const functionArguments = JSON.parse(toolCalls[0].function.arguments); const response = await toolNameMap[functionName](functionArguments); const toolMessage = { tool_call_id: toolCalls[0].id, role: "tool" as const, content: response, }; return { messages: [toolMessage] }; };
+```
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+## Define the graph¶
+
+Now, define the graph. It will have two nodes:
+
+1. The agent: responsible for deciding what (if any) actions to take.
+2. A function to invoke tools: if the agent decides to take an action, this node will then execute that action.
+
+We will also need to define some edges. Some of these edges may be conditional. The reason they are conditional is that based on the output of a node, one of several paths may be taken. The path that is taken is not known until that node is run (the LLM decides).
+
+1. Conditional Edge: after the agent is called, we should either: a. If the agent said to take an action, then the function to invoke tools should be called\ b. If the agent said that it was finished, then it should finish
+2. Normal Edge: after the tools are invoked, it should always go back to the agent to decide what to do next
+
+```
+import { StateGraph, END } from "@langchain/langgraph"; import { AIMessage } from "@langchain/core/messages"; const routeMessage = (state: typeof StateAnnotation.State) => { const { messages } = state; const lastMessage = messages[messages.length - 1] as AIMessage; // If no tools are called, we can finish (respond to the user) if (!lastMessage?.tool_calls?.length) { return END; } // Otherwise if there is, we continue and call the tools return "tools"; }; const workflow = new StateGraph(StateAnnotation) .addNode("agent", callModel) .addNode("tools", callTools) .addEdge("__start__", "agent") .addConditionalEdges("agent", routeMessage) .addEdge("tools", "agent"); const graph = workflow.compile();
+```
+
+## Use it!¶
+
+We can now interact with the agent. Between interactions you can get and update state.
+
+```
+let inputs = { messages: [{ role: "user", content: "what's under the bed?" }] }; for await ( const chunk of await graph.stream(inputs, { streamMode: "stream_tokens", }) ) { console.log(chunk); }
+```
+
+```
+{ agent: '' } { agent: 'Under' } { agent: ' the' } { agent: ' bed' } { agent: ' you' } { agent: ' might' } { agent: ' find' } { agent: ' socks' } { agent: ',' } { agent: ' shoes' } { agent: ' and' } { agent: ' dust' } { agent: ' bunnies.' } { agent: '' }
+```
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

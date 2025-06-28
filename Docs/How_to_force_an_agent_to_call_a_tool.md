@@ -24,13 +24,13 @@ Force Calling a Tool First: LangGraphJS
 
 We will first define the tools we want to use. For this simple example, we will use a built-in search tool via Tavily. However, it is really easy to create your own tools - see documentation here on how to do that.
 
-To add a 'return\_direct' option, we will create a custom zod schema to use instead of the schema that would be automatically inferred by the tool.
+To add a 'return_direct' option, we will create a custom zod schema to use instead of the schema that would be automatically inferred by the tool.
 
 ```
 import { DynamicStructuredTool } from "@langchain/core/tools"; import { z } from "zod"; const SearchTool = z.object({ query: z.string().describe("query to look up online"), // **IMPORTANT** We are adding an **extra** field here // that isn't used directly by the tool - it's used by our // graph instead to determine whether or not to return the // result directly to the user return_direct: z.boolean() .describe( "Whether or not the result of this should be returned directly to the user without you seeing what it is", ) .default(false), }); const searchTool = new DynamicStructuredTool({ name: "search", description: "Call to surf the web.", // We are overriding the default schema here to // add an extra field schema: SearchTool, func: async ({}: { query: string }) => { // This is a placeholder for the actual implementation // Don't let the LLM know this though 😊 return "It's sunny in San Francisco, but you better look out if you're a Gemini 😈."; }, }); const tools = [searchTool];
 ```
 
-We can now wrap these tools in a ToolNode. This is a prebuilt node that takes in a LangChain chat model's generated tool call and calls that tool, returning the output.
+We can now wrap these tools in a ToolNode.
 
 ```
 import { ToolNode } from "@langchain/langgraph/prebuilt"; const toolNode = new ToolNode(tools);
@@ -75,6 +75,84 @@ We now need to define a few different nodes in our graph. In langgraph, a node c
 We will also need to define some edges. Some of these edges may be conditional. The reason they are conditional is that based on the output of a node, one of several paths may be taken. The path that is taken is not known until that node is run (the LLM decides).
 
 1. Conditional Edge: after the agent is called, we should either: a. If the agent said to take an action, then the function to invoke tools should be called\ b. If the agent said that it was finished, then it should finish
-2. Normal Edge: after the tools are invoked, it sho
+2. Normal Edge: after the tools are invoked, it should always go back to the agent to decide what to do next
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+Let's define the nodes, as well as a function to decide how what conditional edge to take.
+
+```
+import { RunnableConfig } from "@langchain/core/runnables"; import { END } from "@langchain/langgraph"; import { AIMessage } from "@langchain/core/messages"; // Define the function that determines whether to continue or not const shouldContinue = (state: typeof AgentState.State) => { const { messages } = state; const lastMessage = messages[messages.length - 1] as AIMessage; // If there is no function call, then we finish if (!lastMessage?.tool_calls?.length) { return END; } // Otherwise if there is, we continue return "tools"; }; // Define the function that calls the model const callModel = async (state: typeof AgentState.State, config?: RunnableConfig) => { const messages = state.messages; const response = await boundModel.invoke(messages, config); // We return an object, because this will get added to the existing list return { messages: [response] }; };
+```
+
+## Define the graph¶
+
+We can now put it all together and define the graph!
+
+```
+import { START, StateGraph } from "@langchain/langgraph"; // Define a new graph const workflow = new StateGraph(AgentState) // Define the two nodes we will cycle between .addNode("agent", callModel) .addNode("tools", toolNode) // Set the entrypoint as `agent` .addEdge(START, "agent") // We now add a conditional edge .addConditionalEdges( // First, we define the start node. We use `agent`. // This means these are the edges taken after the `agent` node is called. "agent", // Next, we pass in the function that will determine which node is called next. shouldContinue, ) // We now add a normal edge from `tools` to `agent`. .addEdge("tools", "agent"); // Finally, we compile it! const app = workflow.compile();
+```
+
+## Use it!¶
+
+We can now use it! This now exposes the same interface as all other LangChain runnables.
+
+```
+import { HumanMessage, isAIMessage } from "@langchain/core/messages"; const prettyPrint = (message: BaseMessage) => { let txt = `[${message._getType()}]: ${message.content}`;
+ if (
+ isAIMessage(message) && (message as AIMessage)?.tool_calls?.length || 0 > 0
+ ) {
+ const tool_calls = (message as AIMessage)?.tool_calls
+ ?.map((tc) => `- ${tc.name}(${JSON.stringify(tc.args)})`)
+ .join("\n");
+ txt += ` \nTools: \n${tool_calls}`;
+ }
+ console.log(txt);
+ };
+ const inputs = { messages: [new HumanMessage("what is the weather in sf")] };
+ for await (const output of await app.stream(inputs, { streamMode: "values" })) {
+ const lastMessage = output.messages[output.messages.length - 1];
+ prettyPrint(lastMessage);
+ console.log("-----\n");
+ }
+```
+
+```
+[human]: what is the weather in sf ---
+[ai]: Tools: - search({"query":"current weather in San Francisco"})
+---
+[tool]: It's sunny in San Francisco, but you better look out if you're a Gemini 😈.
+---
+[ai]: The weather in San Francisco is sunny.
+---
+```
+
+## Force the agent to call a tool first¶
+
+We can force the agent to call a tool first by passing in a tool_code to the invoke method. This will bypass the LLM and directly call the tool. This is useful when you know you want to execute specific actions in your application but also want the flexibility of letting the LLM follow up on the user's query after going through that fixed sequence.
+
+```
+const inputs2 = { messages: [new HumanMessage("what is the weather in sf")] };
+const stream2 = await app.stream(inputs2, { streamMode: "values", tools: [
+ {
+ name: "search",
+ args: { query: "current weather in San Francisco" },
+ },
+ ],
+ });
+for await (const output of stream2) {
+ const lastMessage = output.messages[output.messages.length - 1];
+ prettyPrint(lastMessage);
+ console.log("-----\n");
+}
+```
+
+```
+[human]: what is the weather in sf ---
+[tool]: It's sunny in San Francisco, but you better look out if you're a Gemini 😈.
+---
+[ai]: The weather in San Francisco is sunny.
+---
+```
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

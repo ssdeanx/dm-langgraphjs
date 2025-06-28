@@ -4,18 +4,18 @@ Skip to content
 
 Our Building Ambient Agents with LangGraph course is now available on LangChain Academy!
 
-# Deployment quickstart
+# Deployment quickstart¶
 
 This guide shows you how to set up and use LangGraph Platform for a cloud deployment.
 
-## Prerequisites
+## Prerequisites¶
 
 Before you begin, ensure you have the following:
 
-A GitHub account
-A LangSmith account – free to sign up
+* A GitHub account
+* A LangSmith account – free to sign up
 
-## 1. Create a repository on GitHub
+## 1. Create a repository on GitHub¶
 
 To deploy an application to LangGraph Platform, your application code must reside in a GitHub repository. Both public and private repositories are supported. For this quickstart, use the new-langgraph-project template for your application:
 
@@ -23,7 +23,7 @@ To deploy an application to LangGraph Platform, your application code must resid
 2. Click the Fork button in the top right corner to fork the repository to your GitHub account.
 3. Click Create fork.
 
-## 2. Deploy to LangGraph Platform
+## 2. Deploy to LangGraph Platform¶
 
 1. Log in to LangSmith.
 2. In the left sidebar, select Deployments.
@@ -34,7 +34,7 @@ To deploy an application to LangGraph Platform, your application code must resid
 
    This may take about 15 minutes to complete. You can check the status in the Deployment details view.
 
-## 3. Test your application in LangGraph Studio
+## 3. Test your application in LangGraph Studio¶
 
 Once your application is deployed:
 
@@ -45,12 +45,12 @@ Once your application is deployed:
 
    Sample graph run in LangGraph Studio.
 
-## 4. Get the API URL for your deployment
+## 4. Get the API URL for your deployment¶
 
 1. In the Deployment details view in LangGraph, click the API URL to copy it to your clipboard.
 2. Click the URL to copy it to the clipboard.
 
-## 5. Test the API
+## 5. Test the API¶
 
 You can now test the API:
 
@@ -84,14 +84,14 @@ You can now test the API:
 2. Send a message to the assistant (threadless run):
 
    ```
-   const { Client } = await import("@langchain/langgraph-sdk"); const client = new Client({ apiUrl: "your-deployment-url", apiKey: "your-langsmith-api-key" }); const streamResponse = client.runs.stream( null, # Threadless run "agent", # Assistant ID { input: { "messages": [ { "role": "user", "content": "What is LangGraph?"} ] }, streamMode: "messages", } ); for await (const chunk of streamResponse) { console.log(`Receiving new event of type: ${chunk.event}...`); console.log(JSON.stringify(chunk.data)); console.log("\n\n"); }
+   const { Client } = await import("@langchain/langgraph-sdk"); const client = new Client({ apiUrl: "your-deployment-url", apiKey: "your-langsmith-api-key" }); const streamResponse = client.runs.stream( null, // Threadless run "agent", // Assistant ID { input: { "messages": [ { "role": "user", "content": "What is LangGraph?"} ] }, streamMode: "messages", } ); for await (const chunk of streamResponse) { console.log(`Receiving new event of type: ${chunk.event}...`); console.log(JSON.stringify(chunk.data)); console.log("\n\n"); }
    ```
 
 ```
 curl -s --request POST \ --url <DEPLOYMENT_URL> \ --header 'Content-Type: application/json' \ --data "{ \"assistant_id\": \"agent\", \"input\": { \"messages\": [ { \"role\": \"human\", \"content\": \"What is LangGraph?\" } ] }, \"stream_mode\": \"updates\" }"
 ```
 
-## Next steps
+## Next steps¶
 
 Congratulations! You have deployed an application using LangGraph Platform.
 

@@ -22,7 +22,9 @@ This guide covers streamMode="updates".
 The state is the interface for all of the nodes in our graph.
 
 ```
-import { Annotation } from "@langchain/langgraph"; import { BaseMessage } from "@langchain/core/messages"; const StateAnnotation = Annotation.Root({ messages: Annotation<BaseMessage[]>({ reducer: (x, y) => x.concat(y), }), });
+import { Annotation } from "@langchain/langgraph"; import { BaseMessage } from "@langchain/core/messages"; const StateAnnotation = Annotation.Root({
+    messages: Annotation<BaseMessage[]>({ reducer: (x, y) => x.concat(y) })
+});
 ```
 
 ## Set up the tools¶
@@ -30,7 +32,16 @@ import { Annotation } from "@langchain/langgraph"; import { BaseMessage } from "
 We will first define the tools we want to use. For this simple example, we will use create a placeholder search engine. However, it is really easy to create your own tools - see documentation here on how to do that.
 
 ```
-import { tool } from "@langchain/core/tools"; import { z } from "zod"; const searchTool = tool(async ({ query: _query }: { query: string }) => { // This is a placeholder for the actual implementation return "Cold, with a low of 3°C"; }, { name: "search", description: "Use to surf the web, fetch current information, check the weather, and retrieve other information.", schema: z.object({ query: z.string().describe("The query to use in your search."), }), }); await searchTool.invoke({ query: "What's the weather like?" }); const tools = [searchTool];
+import { tool } from "@langchain/core/tools"; import { z } from "zod"; const searchTool = tool(async ({ query: _query }: { query: string }) => {
+    // This is a placeholder for the actual implementation
+    return "Cold, with a low of 3°C";
+}, {
+    name: "search",
+    description: "Use to surf the web, fetch current information, check the weather, and retrieve other information.",
+    schema: z.object({
+        query: z.string().describe("The query to use in your search.")
+    })
+}); await searchTool.invoke({ query: "What's the weather like?" }); const tools = [searchTool];
 ```
 
 We can now wrap these tools in a simple ToolNode. This object will actually run the tools (functions) whenever they are invoked by our LLM.
@@ -65,7 +76,28 @@ const boundModel = model.bindTools(tools);
 We can now put it all together.
 
 ```
-import { END, START, StateGraph } from "@langchain/langgraph"; import { AIMessage } from "@langchain/core/messages"; const routeMessage = (state: typeof StateAnnotation.State) => { const { messages } = state; const lastMessage = messages[messages.length - 1] as AIMessage; // If no tools are called, we can finish (respond to the user) if (!lastMessage?.tool_calls?.length) { return END; } // Otherwise if there is, we continue and call the tools return "tools"; }; const callModel = async ( state: typeof StateAnnotation.State, ) => { const { messages } = state; const responseMessage = await boundModel.invoke(messages); return { messages: [responseMessage] }; }; const workflow = new StateGraph(StateAnnotation) .addNode("agent", callModel) .addNode("tools", toolNode) .addEdge(START, "agent") .addConditionalEdges("agent", routeMessage) .addEdge("tools", "agent"); const graph = workflow.compile();
+import { END, START, StateGraph } from "@langchain/langgraph"; import { AIMessage } from "@langchain/core/messages"; const routeMessage = (state: typeof StateAnnotation.State) => {
+    const { messages } = state;
+    const lastMessage = messages[messages.length - 1] as AIMessage;
+    // If no tools are called, we can finish (respond to the user)
+    if (!lastMessage?.tool_calls?.length) {
+        return END;
+    }
+    // Otherwise if there is, we continue and call the tools
+    return "tools";
+};
+const callModel = async (state: typeof StateAnnotation.State) => {
+    const { messages } = state;
+    const responseMessage = await boundModel.invoke(messages);
+    return { messages: [responseMessage] };
+};
+const workflow = new StateGraph(StateAnnotation)
+    .addNode("agent", callModel)
+    .addNode("tools", toolNode)
+    .addEdge(START, "agent")
+    .addConditionalEdges("agent", routeMessage)
+    .addEdge("tools", "agent");
+const graph = workflow.compile();
 ```
 
 ## Stream updates¶
@@ -73,4 +105,19 @@ import { END, START, StateGraph } from "@langchain/langgraph"; import { AIMessag
 We can now interact with the agent.
 
 ```
-let inputs = { messages: [{ role: "user", content: "what's the weather in sf" }] }; for await ( const chunk of await graph.stream(inputs, { streamMode: "updates", }) ) { for (const [node, values] of Object.entries(chunk)) { console.log(`Receiving update from node: ${node}`); console.log(values); console.log("\n====\n"); } }
+let inputs = { messages: [{ role: "user", content: "what's the weather in sf" }] }; for await (const chunk of await graph.stream(inputs, { streamMode: "updates" })) {
+    for (const [node, values] of Object.entries(chunk)) {
+        console.log(`Receiving update from node: ${node}`);
+        console.log(values);
+        console.log("\n====\n");
+    }
+}
+```
+
+```
+Receiving update from node: agent { messages: [ AIMessage { "id": "chatcmpl-9y654VypbD3kE1xM8v4xaAHzZEOXa", "content": "", "additional_kwargs": { "tool_calls": [ { "id": "call_OxlOhnROermwae2LPs9SanmD", "type": "function", "function": "[Object]" } ] }, "response_metadata": { "tokenUsage": { "completionTokens": 17, "promptTokens": 70, "totalTokens": 87 }, "finish_reason": "tool_calls", "system_fingerprint": "fp_3aa7262c27" }, "tool_calls": [ { "name": "search", "args": { "query": "current weather in San Francisco" }, "type": "tool_call", "id": "call_OxlOhnROermwae2LPs9SanmD" } ], "invalid_tool_calls": [], "usage_metadata": { "input_tokens": 70, "output_tokens": 17, "total_tokens": 87 } } ] } ==== Receiving update from node: tools { messages: [ ToolMessage { "content": "Cold, with a low of 3°C", "name": "search", "additional_kwargs": {}, "response_metadata": {}, "tool_call_id": "call_OxlOhnROermwae2LPs9SanmD" } ] } ==== Receiving update from node: agent { messages: [ AIMessage { "id": "chatcmpl-9y654dZ0zzZhPYm6lb36FkG1Enr3p", "content": "It looks like it's currently quite cold in San Francisco, with a low temperature of around 3°C. Make sure to dress warmly!", "additional_kwargs": {}, "response_metadata": { "tokenUsage": { "completionTokens": 28, "promptTokens": 103, "totalTokens": 131 }, "finish_reason": "stop", "system_fingerprint": "fp_3aa7262c27" }, "tool_calls": [], "invalid_tool_calls": [], "usage_metadata": { "input_tokens": 103, "output_tokens": 28, "total_tokens": 131 } } ] } ====
+```
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

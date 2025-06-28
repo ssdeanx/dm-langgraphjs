@@ -32,7 +32,7 @@ globs: *
 
 *   Maintain a comprehensive README.md file with setup, usage, and customization instructions.
 *   Document all modules, classes, and functions with clear and concise comments.
-*   Use JSDoc-style comments for generating API documentation.
+*   Use T SDoc-style comments for generating API documentation.
 *   Keep documentation up-to-date with code changes.
 
 ## CODING STANDARDS
@@ -63,6 +63,12 @@ globs: *
 *   When using `client.runs.stream`, ensure the `callbacks` property is not included in the payload. Only supported properties such as `input` and `streamMode` should be used. Tracing should be set up elsewhere, not via this payload.
 *   When working with LangGraph SDK streams, the valid events are `"messages/partial"` (for streaming message chunks).
 *   When using `client.ts` streams in `messages` mode, only handle events that are actually emitted by the stream. Specifically, avoid handling `"on_tool_start"` and `"on_tool_end"` events, as they are not valid for this stream mode.
+*   When using `traceable` with LangChain models or embeddings, wrap the model or embedding instance directly with `traceable(instance, { name: "ModelName" })` instead of using `.pipe(traceable(instance, ...))`. For example: `const model = traceable(llm, { name: "ChatGoogle" });` and `const embeddings = traceable(embeddingModel, { name: "GoogleEmbeddings" });`
+*   When using a LangChain Runnable (such as a model), call it using `.invoke(input)` instead of calling it directly as a function `model(input)`.
+*   When using `supervisorPrompt.formatMessages` to format a prompt for a LangChain model, be aware that it returns an array of messages. Ensure the model is invoked with an appropriate input type. If the model expects a string, use `supervisorPrompt.format` instead.
+*   When using `addEdge` in LangGraph, use the imported `START` and `END` constants instead of the string literals `"__start__"` and `"__end__"` as the source/destination node.
+*   When invoking LangChain models (such as in the supervisor function), use `.invoke(input)` instead of calling the model directly as a function `model(input)`. This is to align with the LangChain Runnable API.
+*   When configuring ESLint, use the `compat.extends` method from the `@eslint/eslintrc` package to extend existing configurations. Spread each string individually, as it expects a single string per call. For example: `export default [ ...compat.extends("eslint:recommended"), ...compat.extends("plugin:@typescript-eslint/recommended"), ...compat.extends("prettier"), ... ];`
 
 ## WORKFLOW & RELEASE RULES
 

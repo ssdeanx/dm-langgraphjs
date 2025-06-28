@@ -3,9 +3,13 @@ import { model } from "../config/googleProvider.js";
 import { BaseMessage } from "@langchain/core/messages";
 
 
+import { AgentType } from "./state.js";
+
+const ALL_AGENT_TYPES: AgentType[] = ["react", "rag", "conversational", "research", "rewoo", "plan_execute", "self_rag", "crag", "collaboration", "research_team", "document_writing_team", "reflection"];
+
 const supervisorPrompt = `You are a supervisor who needs to decide which agent to call next.
 
-Given the following user request, respond with either "react", "rag", or "conversational" to route to the correct agent.
+Given the following user request, respond with one of the following agent names: ${ALL_AGENT_TYPES.join(", ")}. If the task is complete, respond with 'FINISH'.
 
 User Request: {input}`;
 

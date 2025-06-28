@@ -1,7 +1,8 @@
 import { StateGraph, END, Annotation, START } from "@langchain/langgraph";
 import { AgentType, MessagesState } from "./state.js";
 import { model } from "../config/googleProvider.js";
-import { inMemoryStore } from "../memory/in_memory_store.js";
+import { MongoDBSaver } from "@langchain/langgraph-checkpoint-mongodb";
+import { MongoClient } from "mongodb";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { reactAgent } from "./react.js";
 import { ragAgent } from "./rag.js";
@@ -17,10 +18,8 @@ import { documentWritingTeamWorkflow } from "../workflows/document_writing_team_
 import { reflectionWorkflow } from "../workflows/reflection_workflow.js";
 import { generateMermaidPng } from "../utils/graphVisualizer.js";
 import { BaseMessage } from "@langchain/core/messages";
-import { Document } from "@langchain/core/documents"; // Added for Document type in MessagesState
 
-// Define a type for all possible node names in the graph
-type NodeNames = AgentType | "supervisor";
+import { Document } from "@langchain/core/documents"; // Added for Document type in MessagesState
 
 // 3. Define the supervisor
 const supervisorPrompt = ChatPromptTemplate.fromMessages([
@@ -30,9 +29,8 @@ const supervisorPrompt = ChatPromptTemplate.fromMessages([
 
 const supervisor = async (state: MessagesState) => {
   const lastMessage = state.messages[state.messages.length - 1];
-  const response = await model.invoke(
-    await supervisorPrompt.formatMessages({ input: lastMessage.content as string })
-  );
+  const formattedMessages = await supervisorPrompt.formatMessages({ input: lastMessage.content as string });
+  const response = await model(formattedMessages);
   return {
     next: response.content as AgentType | "FINISH",
   };
@@ -158,6 +156,7 @@ const wrapWorkflow = (workflow: any) => async (state: MessagesState): Promise<Pa
   return result; // Assume the workflow returns a Partial<MessagesState>
 };
 
+
 workflow.addNode("react", wrapWorkflow(reactAgent));
 workflow.addNode("rag", wrapWorkflow(ragAgent));
 workflow.addNode("conversational", wrapWorkflow(conversationalAgent));
@@ -207,10 +206,13 @@ for (const member of members) {
   workflow.addEdge(member as any, "supervisor" as any);
 }
 
-export const graph = workflow.compile({
-  store: inMemoryStore,
-});
+const client = new MongoClient(process.env.MONGODB_ATLAS_URI!);
+
+const memory = new MongoDBSaver({ client });
+
+export const graph = workflow.compile({ checkpointer: memory });
 
 (async () => {
   await generateMermaidPng(graph, "static/graph.png");
 })();
+

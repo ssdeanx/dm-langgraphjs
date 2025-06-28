@@ -12,7 +12,7 @@ In this example we will build a conversational ReAct agent where the LLM can opt
 
 ## Setup¶
 
-First we need to install the packages required
+First we need to install the required packages:
 
 ```
 yarn add @langchain/langgraph @langchain/openai @langchain/core
@@ -76,6 +76,136 @@ We now need to define a few different nodes in our graph. In langgraph, a node c
 1. The agent: responsible for deciding what (if any) actions to take.
 2. A function to invoke tools: if the agent decides to take an action, this node will then execute that action.
 
-We will also need to define some ed
+We will also need to define some edges. Some of these edges may be conditional. The reason they are conditional is that based on the output of a node, one of several paths may be taken. The path that is taken is not known until that node is run (the LLM decides).
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+1. Conditional Edge: after the agent is called, we should either: a. If the agent said to take an action, then the function to invoke tools should be called\ b. If the agent said that it was finished, then it should finish
+2. Normal Edge: after the tools are invoked, it should always go back to the agent to decide what to do next
+
+Let's define the nodes, as well as a function to decide how what conditional edge to take.
+
+```
+import { RunnableConfig } from "@langchain/core/runnables"; import { END } from "@langchain/langgraph"; import { AIMessage } from "@langchain/core/messages"; // Define the function that determines whether to continue or not const shouldContinue = (state: typeof AgentState.State) => {
+  const { messages } = state;
+  const lastMessage = messages[messages.length - 1] as AIMessage;
+  // If there is no function call, then we finish
+  if (!lastMessage?.tool_calls?.length) {
+    return END;
+  }
+  // Otherwise if there is, we check if it's suppose to return direct
+  else {
+    const args = lastMessage.tool_calls[0].args;
+    if (args?.return_direct) {
+      return "final";
+    } else {
+      return "tools";
+    }
+  }
+};
+
+// Define the function that calls the model
+const callModel = async (
+  state: typeof AgentState.State,
+  config?: RunnableConfig,
+) => {
+  const messages = state.messages;
+  const response = await boundModel.invoke(messages, config);
+  // We return an object, because this will get added to the existing list
+  return { messages: [response] };
+};
+```
+
+## Define the graph¶
+
+We can now put it all together and define the graph!
+
+```
+import { START, StateGraph } from "@langchain/langgraph"; // Define a new graph const workflow = new StateGraph(AgentState)
+  // Define the two nodes we will cycle between
+  .addNode("agent", callModel)
+  // Note the "action" and "final" nodes are identical!
+  .addNode("tools", toolNode)
+  .addNode("final", toolNode)
+  // Set the entrypoint as `agent`
+  .addEdge(START, "agent")
+  // We now add a conditional edge
+  .addConditionalEdges(
+    // First, we define the start node. We use `agent`.
+    // This means these are the edges taken after the `agent` node is called.
+    "agent",
+    // Next, we pass in the function that will determine which node is called next.
+    shouldContinue,
+  )
+  // We now add a normal edge from `tools` to `agent`.
+  .addEdge("tools", "agent")
+  .addEdge("final", END);
+
+// Finally, we compile it!
+const app = workflow.compile();
+```
+
+## Use it!¶
+
+We can now use it! This now exposes the same interface as all other LangChain runnables.
+
+```
+import { HumanMessage, isAIMessage } from "@langchain/core/messages"; const prettyPrint = (message: BaseMessage) => {
+  let txt = `[${message._getType()}]: ${message.content}`;
+  if (
+    isAIMessage(message) &&
+    ((message as AIMessage)?.tool_calls?.length || 0) > 0
+  ) {
+    const tool_calls = (message as AIMessage)?.tool_calls
+      ?.map((tc) => `- ${tc.name}(${JSON.stringify(tc.args)})`)
+      .join("\n");
+    txt += ` \nTools: \n${tool_calls}`;
+  }
+  console.log(txt);
+};
+
+const inputs = { messages: [new HumanMessage("what is the weather in sf")] };
+
+for await (const output of await app.stream(inputs, { streamMode: "values" })) {
+  const lastMessage = output.messages[output.messages.length - 1];
+  prettyPrint(lastMessage);
+  console.log("-----\n");
+}
+```
+
+```
+[human]: what is the weather in sf -----
+[ai]: Tools:
+- search({"query":"current weather in San Francisco"}) -----
+[tool]: It's sunny in San Francisco, but you better look out if you're a Gemini 😈. -----
+[ai]: The weather in San Francisco is sunny. -----
+```
+
+```
+const inputs2 = {
+  messages: [
+    new HumanMessage(
+      "what is the weather in sf? return this result directly by setting return_direct = True",
+    ),
+  ],
+};
+
+for await (
+  const output of await app.stream(inputs2, { streamMode: "values" })
+) {
+  const lastMessage = output.messages[output.messages.length - 1];
+  prettyPrint(lastMessage);
+  console.log("-----\n");
+}
+```
+
+```
+[human]: what is the weather in sf? return this result directly by setting return_direct = True -----
+[ai]: Tools:
+- search({"query":"weather in San Francisco","return_direct":true}) -----
+[tool]: It's sunny in San Francisco, but you better look out if you're a Gemini 😈. -----
+```
+
+Done! The graph stopped after running the tools node!
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

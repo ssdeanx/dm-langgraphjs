@@ -47,11 +47,21 @@ import { ChatOpenAI } from "@langchain/openai"; import { StateGraph, MessagesAnn
 ```
 
 ```
-on_chain_start: LangGraph on_chain_start: __start__ on_chain_end: __start__ on_chain_start: callModel on_chat_model_start: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_end: ChatOpenAI on_chain_start: ChannelWrite<callModel,messages> on_chain_end: ChannelWrite<callModel,messages> on_chain_stream: callModel on_chain_end: callModel on_chain_stream: LangGraph on_chain_end: LangGraph
+on_chain_start: LangGraph on_chain_start: __start__ on_chain_end: __start__ on_chain_start: callModel on_chat_model_start: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_stream: ChatOpenAI on_chat_model_end: ChatOpenAI on_chain_start: ChannelWrite<callModel,messages> on_chain_end: ChannelWrite<callModel,messages> on_chain_stream: callModel on_chain_end: callModel on_chain_stream: LangGraph on_chain_end: LangGraph
 ```
 
 We start with the overall graph start (on\_chain\_start: LangGraph). We then write to the \_\_start\_\_ node (this is special node to handle input). We then start the callModel node (on\_chain\_start: callModel). We then start the chat model invocation (on\_chat\_model\_start: ChatOpenAI), stream back token by token (on\_chat\_model\_stream: ChatOpenAI) and then finish the chat model (on\_chat\_model\_end: ChatOpenAI). From there, we write the results back to the channel (ChannelWrite<callModel,messages>) and then finish the callModel node and then the graph as a whole.
 
-This should hopefully give you a good sense of what events are emitted in a simple graph. But what data do these events contain? Each type of event contains data in a different format. Let'
+This should hopefully give you a good sense of what events are emitted in a simple graph. But what data do these events contain? Each type of event contains data in a different format. Let's take a look at the on\_chat\_model\_stream event. This event contains a chunk of the LLM's response. We can use this to stream the LLM's response to the user.
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+```
+const inputs = [{ role: "user", content: "hi!" }]; for await (const event of app.streamEvents( { messages: inputs }, { version: "v2" } )) { if (event.event === "on_chat_model_stream") { process.stdout.write(event.data.chunk.content); } }
+```
+
+```
+Hello! How can I assist you today?
+```
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

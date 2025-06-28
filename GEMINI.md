@@ -64,7 +64,6 @@ globs: *
 
 * Use modern TypeScript features and syntax.
 * Follow the principles of the 12-factor app.
-* Write unit and integration tests for all critical functionality.
 * Enforce code quality with ESLint and Prettier.
 * Use environment variables for configuration.
 * Prefer ESM modules.
@@ -89,10 +88,8 @@ globs: *
 
 ## TESTING
 
-* Write unit tests for individual components and functions.
 * Write integration tests to verify the interaction between different parts of the system.
 * Use Jest as the testing framework.
-* Aim for high test coverage.
 * Run tests automatically in CI/CD pipelines.
 * Mock external dependencies for unit testing.
 

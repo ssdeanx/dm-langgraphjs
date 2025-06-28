@@ -77,6 +77,69 @@ import { zodToJsonSchema } from "zod-to-json-schema"; console.log(zodToJsonSchem
 Let's also declare another tool so that our agent can retrieve previously set preferences:
 
 ```
-const getFavoritePets = tool( async (_, config: LangGraphRunnableConfig) => { const userId = config.configurable?.userId; // LangGraph's managed key-value store is also accessible via the config const store = config.store; const petNames = await store.get([userId, "pets"], "names"); const context = await store.get([userId, "
+const getFavoritePets = tool( async (_, config: LangGraphRunnableConfig) => { const userId = config.configurable?.userId; // LangGraph's managed key-value store is also accessible via the config const store = config.store; const petNames = await store.get([userId, "pets"], "names"); const context = await store.get([userId, "pets"], "context"); return JSON.stringify({ pets: petNames.value, context: context.value.content, }); }, { // The LLM "sees" the following schema: name: "get_favorite_pets", description: "retrieve the list of favorite pets for the given user.", schema: z.object({}), } );
+```
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+## Define the nodes¶
+
+From here there's really nothing special that needs to be done. This approach works with both StateGraph and functional agents, and it works just as well with prebuilt agents like createReactAgent! We'll demonstrate it by defining a custom ReAct agent using StateGraph. This is very similar to the agent that you'd get if you were to instead call createReactAgent
+
+Let's start off by defining the nodes for our graph.
+
+1. The agent: responsible for deciding what (if any) actions to take.
+2. A function to invoke tools: if the agent decides to take an action, this node will then execute that action.
+
+We will also need to define some edges.
+
+1. After the agent is called, we should either invoke the tool node or finish.
+2. After the tool node have been invoked, it should always go back to the agent to decide what to do next
+
+```
+import { END, START, StateGraph, MemorySaver, InMemoryStore, } from "@langchain/langgraph"; import { AIMessage } from "@langchain/core/messages"; import { ToolNode } from "@langchain/langgraph/prebuilt"; import { ChatOpenAI } from "@langchain/openai"; const model = new ChatOpenAI({ model: "gpt-4o" }); const tools = [getFavoritePets, updateFavoritePets]; const routeMessage = (state: typeof MessagesAnnotation.State) => { const { messages } = state; const lastMessage = messages[messages.length - 1] as AIMessage; // If no tools are called, we can finish (respond to the user) if (!lastMessage?.tool_calls?.length) { return END; } // Otherwise if there is, we continue and call the tools return "tools"; }; const callModel = async (state: typeof MessagesAnnotation.State) => { const { messages } = state; const modelWithTools = model.bindTools(tools); const responseMessage = await modelWithTools.invoke([ { role: "system", content: "You are a personal assistant. Store any preferences the user tells you about." }, ...messages ]); return { messages: [responseMessage] }; }; const workflow = new StateGraph(MessagesAnnotation) .addNode("agent", callModel) .addNode("tools", new ToolNode(tools)) .addEdge(START, "agent") .addConditionalEdges("agent", routeMessage) .addEdge("tools", "agent"); const memory = new MemorySaver(); const store = new InMemoryStore(); const graph = workflow.compile({ checkpointer: memory, store: store });
+```
+
+```
+import * as tslab from "tslab"; const graphViz = graph.getGraph(); const image = await graphViz.drawMermaidPng(); const arrayBuffer = await image.arrayBuffer(); await tslab.display.png(new Uint8Array(arrayBuffer));
+```
+
+## Use it!¶
+
+Let's use our graph now!
+
+```
+import { BaseMessage, isAIMessage, isHumanMessage, isToolMessage, HumanMessage, ToolMessage, } from "@langchain/core/messages"; let inputs = { messages: [ new HumanMessage({ content: "My favorite pet is a terrier. I saw a cute one on Twitter." }) ], }; let config = { configurable: { thread_id: "1", userId: "a-user", }, }; function printMessages(messages: BaseMessage[]) { for (const message of messages) { if (isHumanMessage(message)) { console.log(`User: ${message.content}`); } else if (isAIMessage(message)) { const aiMessage = message as AIMessage; if (aiMessage.content) { console.log(`Assistant: ${aiMessage.content}`); } if (aiMessage.tool_calls) { for (const toolCall of aiMessage.tool_calls) { console.log(`Tool call: ${toolCall.name}(${JSON.stringify(toolCall.args)})`); } } } else if (isToolMessage(message)) { const toolMessage = message as ToolMessage; console.log(`${toolMessage.name} tool output: ${toolMessage.content}`); } } } let { messages } = await graph.invoke(inputs, config); printMessages(messages);
+```
+
+```
+User: My favorite pet is a terrier. I saw a cute one on Twitter. Tool call: update_favorite_pets({"pets":["terrier"]}) update_favorite_pets tool output: update_favorite_pets called. Assistant: I've added "terrier" to your list of favorite pets. If you have any more favorites, feel feel to let me know!
+```
+
+Now verify it can properly fetch the stored preferences and cite where it got the information from:
+
+```
+inputs = { messages: [new HumanMessage({ content: "What're my favorite pets and what did I say when I told you about them?" })] }; config = { configurable: { thread_id: "2", // New thread ID, so the conversation history isn't present. userId: "a-user" } }; messages = (await graph.invoke(inputs, config)).messages; printMessages(messages);
+```
+
+```
+User: What're my favorite pets and what did I say when I told you about them? Tool call: get_favorite_pets({}) get_favorite_pets tool output: {"pets":["terrier"],"context":"My favorite pet is a terrier. I saw a cute one on Twitter."} Assistant: Your favorite pet is a terrier. You mentioned, "My favorite pet is a terrier. I saw a cute one on Twitter."
+```
+
+As you can see the agent is able to properly cite that the information came from Twitter!
+
+## Closures¶
+
+If you cannot use context variables in your environment, you can use closures to create tools with access to dynamic content. Here is a high-level example:
+
+```
+function generateTools(state: typeof MessagesAnnotation.State) { const updateFavoritePets = tool( async (input, config: LangGraphRunnableConfig) => { // Some arguments are populated by the LLM; these are included in the schema below const { pets } = input; // Others (such as a UserID) are best provided via the config // This is set when when invoking or streaming the graph const userId = config.configurable?.userId; // LangGraph's managed key-value store is also accessible via the config const store = config.store; await store.put([userId, "pets"], "names", pets ) await store.put([userId, "pets"], "context", {content: state.messages[0].content}) return "update_favorite_pets called."; }, { // The LLM "sees" the following schema: name: "update_favorite_pets", description: "add to the list of favorite pets.", schema: z.object({ pets: z.array(z.string()), }), } ); return [updateFavoritePets]; };
+```
+
+Then, when laying out your graph, you will need to call the above method whenever you bind or invoke tools. For example:
+
+```
+const toolNodeWithClosure = async (state: typeof MessagesAnnotation.State) => { // We fetch the tools any time this node is reached to // form a closure and let it access the latest messages const tools = generateTools(state); const toolNodeWithConfig = new ToolNode(tools); return toolNodeWithConfig.invoke(state); };
+```
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

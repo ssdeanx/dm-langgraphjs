@@ -65,7 +65,14 @@ const boundModel = model.bindTools(tools);
 We can now put it all together.
 
 ```
-import { END, START, StateGraph } from "@langchain/langgraph"; import { AIMessage } from "@langchain/core/messages"; const routeMessage = (state: typeof StateAnnotation.State) => { const { messages } = state; const lastMessage = messages[messages.length - 1] as AIMessage; // If no tools are called, we can finish (respond to the user) if (!lastMessage?.tool_calls?.length) { return END; } // Otherwise if there is, we continue and call the tools return "tools"; }; const callModel = async ( state: typeof StateAnnotation.State, ) => { // For versions of @langchain/core < 0.2.3, you must call `.stream()` // and aggregate the message from chunks instead of calling `.invoke()`. const { messages } = state; const responseMessage = await boundModel.invoke(messages); return { messages: [responseMessage] }; }; const workflow = new StateGraph(StateAnnotation) .addNode("agent", callModel) .addNode("tools", toolNode) .addEdge(START, "agent") .addConditionalEdges("agent", routeMessage) .addEdge("tools", "agent"); const graph = workflow.compile();
+import { END, START, StateGraph } from "@langchain/langgraph"; import { AIMessage } from "@langchain/core/messages"; const routeMessage = (state: typeof StateAnnotation.State) => { const { messages } = state; const lastMessage = messages[messages.length - 1] as AIMessage; // If no tools are called, we can finish (respond to the user) if (!lastMessage?.tool_calls?.length) { return END; } // Otherwise if there is, we continue and call the tools return "tools"; }; const callModel = async (
+ state: typeof StateAnnotation.State,
+ ) => { // For versions of @langchain/core < 0.2.3, you must call `.stream()` // and aggregate the message from chunks instead of calling `.invoke()`. const { messages } = state; const responseMessage = await boundModel.invoke(messages); return { messages: [responseMessage] }; }; const workflow = new StateGraph(StateAnnotation)
+ .addNode("agent", callModel)
+ .addNode("tools", toolNode)
+ .addEdge(START, "agent")
+ .addConditionalEdges("agent", routeMessage)
+ .addEdge("tools", "agent"); const graph = workflow.compile();
 ```
 
 ## Stream values¶
@@ -73,10 +80,18 @@ import { END, START, StateGraph } from "@langchain/langgraph"; import { AIMessag
 We can now interact with the agent. Between interactions you can get and update state.
 
 ```
-let inputs = { messages: [{ role: "user", content: "what's the weather in sf" }] }; for await ( const chunk of await graph.stream(inputs, { streamMode: "values", }) ) { console.log(chunk["messages"]); console.log("\n====\n"); }
+let inputs = { messages: [{ role: "user", content: "what's the weather in sf" }] }; for await (
+ const chunk of await graph.stream(inputs, { streamMode: "values", })
+ ) {
+ console.log(chunk["messages"]);
+ console.log("\n====\n");
+ }
 ```
 
 ```
-[ [ 'user', "what's the weather in sf" ] ] ==== [ [ 'user', "what's the weather in sf" ], AIMessage { "id": "chatcmpl-9y660d49eLzT7DZeBk2ZmX8C5f0LU", "content": "", "additional_kwargs": { "tool_calls": [ { "id": "call_iD5Wk4vPsTckffDKJpEQaMkg", "type": "function", "function": "[Object]" } ] }, "response_metadata": { "tokenUsage": { "completionTokens": 17, "promptTokens": 70, "totalTokens": 87 }, "finish_reason": "tool_calls", "system_fingerprint": "fp_3aa7262c27" }, "tool_calls": [ { "name": "search", "args": { "query": "current weather in San Francisco" }, "type": "tool_call", "id": "call_iD5Wk4vPsTckffDKJpEQaMkg" } ], "invalid_tool_calls": [], "usage_metadata": { "input_tokens": 70, "output_tokens": 17, "total_tokens": 87 } } ] ==== [ [ 'user', "what's the weather in sf" ], AIMessage { "id": "chatcmpl-9y660d49eLzT7DZeBk2ZmX8C
+[ [ 'user', "what's the weather in sf" ] ] ==== [ [ 'user', "what's the weather in sf" ], AIMessage { "id": "chatcmpl-9y660d49eLzT7DZeBk2ZmX8C5f0LU", "content": "", "additional_kwargs": { "tool_calls": [ { "id": "call_iD5Wk4vPsTckffDKJpEQaMkg", "type": "function", "function": "[Object]" } ] }, "response_metadata": { "tokenUsage": { "completionTokens": 17, "promptTokens": 70, "totalTokens": 87 }, "finish_reason": "tool_calls", "system_fingerprint": "fp_3aa7262c27" }, "tool_calls": [ { "name": "search", "args": { "query": "current weather in San Francisco" }, "type": "tool_call", "id": "call_iD5Wk4vPsTckffDKJpEQaMkg" } ], "invalid_tool_calls": [], "usage_metadata": { "input_tokens": 70, "output_tokens": 17, "total_tokens": 87 } } ] ==== [ [ 'user', "what's the weather in sf" ], AIMessage { "id": "chatcmpl-9y660d49eLzT7DZeBk2ZmX8C5f0LU", "content": "", "additional_kwargs": { "tool_calls": [ { "id": "call_iD5Wk4vPsTckffDKJpEQaMkg", "type": "function", "function": "[Object]" } ] }, "response_metadata": { "tokenUsage": { "completionTokens": 17, "promptTokens": 70, "totalTokens": 87 }, "finish_reason": "tool_calls", "system_fingerprint": "fp_3aa7262c27" }, "tool_calls": [ { "name": "search", "args": { "query": "current weather in San Francisco" }, "type": "tool_call", "id": "call_iD5Wk4vPsTckffDKJpEQaMkg" } ], "invalid_tool_calls": [], "usage_metadata": { "input_tokens": 70, "output_tokens": 17, "total_tokens": 87 } }, ToolMessage { "content": "Cold, with a low of 3°C", "name": "search", "additional_kwargs": {}, "response_metadata": {}, "tool_call_id": "call_iD5Wk4vPsTckffDKJpEQaMkg" } ] ==== [ [ 'user', "what's the weather in sf" ], AIMessage { "id": "chatcmpl-9y660d49eLzT7DZeBk2ZmX8C5f0LU", "content": "", "additional_kwargs": { "tool_calls": [ { "id": "call_iD5Wk4vPsTckffDKJpEQaMkg", "type": "function", "function": "[Object]" } ] }, "response_metadata": { "tokenUsage": { "completionTokens": 17, "promptTokens": 70, "totalTokens": 87 }, "finish_reason": "tool_calls", "system_fingerprint": "fp_3aa7262c27" }, "tool_calls": [ { "name": "search", "args": { "query": "current weather in San Francisco" }, "type": "tool_call", "id": "call_iD5Wk4vPsTckffDKJpEQaMkg" } ], "invalid_tool_calls": [], "usage_metadata": { "input_tokens": 70, "output_tokens": 17, "total_tokens": 87 } }, ToolMessage { "content": "Cold, with a low of 3°C", "name": "search", "additional_kwargs": {}, "response_metadata": {}, "tool_call_id": "call_iD5Wk4vPsTckffDKJpEQaMkg" }, AIMessage { "id": "chatcmpl-9y660ZKNXvziVJze0X5aTlZ5IoN35", "content": "Currently, in San Francisco, it's cold with a temperature of around 3°C (37.4°F).", "additional_kwargs": {}, "response_metadata": { "tokenUsage": { "completionTokens": 23, "promptTokens": 103, "totalTokens": 126 }, "finish_reason": "stop", "system_fingerprint": "fp_3aa7262c27" }, "tool_calls": [], "invalid_tool_calls": [], "usage_metadata": { "input_tokens": 103, "output_tokens": 23, "total_tokens": 126 } } ] ====
+```
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

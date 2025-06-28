@@ -57,6 +57,25 @@ Note that child and grandchild subgraphs have their own, independent state that 
 ### Define parent¶
 
 ```
-import { StateGraph, START, END, Annotation } from "@langchain/langgraph"; const ParentAnnotation = Annotation.Root({ myKey: Annotation<string>, }); const parent1 = (state: typeof ParentAnnotation.State) => { // NOTE: child or grandchild keys won't be accessible here return { myKey: "hi " + state.myKey }; }; const parent2 = (state: typeof ParentAnnotation.State) => { return { myKey: state.myKey + " bye!" }; }; const callChildGraph = async (state: typeof ParentAnnotation.State) => { // we're transforming the state from the parent state channels (`myKey`) // to the child state channels (`myChildKey`) const childGraphInput = { myChildKey: state.myKey }; // we're transforming the state from the child state channels (`myChildKey`) // back to the parent state channels (`myKey`) const childGraphOutput = await childGraph.invoke(childGraphInput); return { myKey: childGraphOutput.myChildKey }; }; const parent = new StateGraph(ParentAnnotation) .addNode("parent1", parent1) // NOTE: we're passing a function here instead of just a compiled graph (`childGraph`) .addNode("child", callChildGraph) .addNode("parent2", parent2) .addEdge(START, "parent1") .addE
+import { StateGraph, START, END, Annotation } from "@langchain/langgraph"; const ParentAnnotation = Annotation.Root({ myKey: Annotation<string>, }); const parent1 = (state: typeof ParentAnnotation.State) => { // NOTE: child or grandchild keys won't be accessible here return { myKey: "hi " + state.myKey }; }; const parent2 = (state: typeof ParentAnnotation.State) => { return { myKey: state.myKey + " bye!" }; }; const callChildGraph = async (state: typeof ParentAnnotation.State) => { // we're transforming the state from the parent state channels (`myKey`) // to the child state channels (`myChildKey`) const childGraphInput = { myChildKey: state.myKey }; // we're transforming the state from the child state channels (`myChildKey`) // back to the parent state channels (`myKey`) const childGraphOutput = await childGraph.invoke(childGraphInput); return { myKey: childGraphOutput.myChildKey }; }; const parent = new StateGraph(ParentAnnotation) .addNode("parent1", parent1) // NOTE: we're passing a function here instead of just a compiled graph (`childGraph`) .addNode("child", callChildGraph) .addNode("parent2", parent2) .addEdge(START, "parent1") .addEdge("parent1", "child") .addEdge("child", "parent2") .addEdge("parent2", END); const parentGraph = parent.compile();
+```
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+Note
+
+We're wrapping the childGraph invocation in a separate function (callChildGraph) that transforms the input state before calling the child graph and then transforms the output of the child graph back to parent graph state. If you just pass childGraph directly to .addNode without the transformations, LangGraph will raise an error as there are no shared state channels (keys) between parent and child states.
+
+Let's run the parent graph and make sure it correctly calls both the child and grandchild subgraphs:
+
+```
+await parentGraph.invoke({ myKey: "Bob" })
+```
+
+```
+{ myKey: 'hi Bob, how are you today? bye!' }
+```
+
+Perfect! The parent graph correctly calls both the child and grandchild subgraphs (which we know since the ", how are you" and "today?" are added to our original "myKey" state value).
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

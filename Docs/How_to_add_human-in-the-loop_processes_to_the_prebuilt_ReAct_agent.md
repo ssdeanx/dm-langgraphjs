@@ -39,7 +39,7 @@ import { ChatOpenAI } from "@langchain/openai"; import { tool } from '@langchain
 ## Usage¶
 
 ```
-let inputs = { messages: [{ role: "user", content: "what is the weather in SF california?" }] }; let config = { configurable: { thread_id: "1" } }; let stream = await agent.stream(inputs, { ...config, streamMode: "values", }); for await ( const { messages } of stream ) { let msg = messages[messages?.length - 1]; if (msg?.content) { console.log(msg.content); } if (msg?.tool_calls?.length > 0) { console.log(msg.tool_calls); } console.log("-----\n"); }
+let inputs = { messages: [{ role: "user", content: "what is the weather in SF california?" }] }; let config = { configurable: { thread_id: "1" } }; let stream = await agent.stream(inputs, { ...config, streamMode: "values", }); for await ( const { messages } of stream ) { let msg = messages[messages?.length - 1]; if (msg?.content) { console.log(msg.content); } if (msg?.tool_calls?.length > 0) { console.log(msg.tool_calls); } console.log("-----\n"); } 
 ```
 
 ```
@@ -61,7 +61,7 @@ Now we can either approve or edit the tool call before proceeding to the next no
 We can try resuming and we will see an error arise:
 
 ```
-stream = await agent.stream(null, { ...config, streamMode: "values", }); for await ( const { messages } of stream ) { let msg = messages[messages?.length - 1]; if (msg?.content) { console.log(msg.content); } if (msg?.tool_calls?.length > 0) { console.log(msg.tool_calls); } console.log("-----\n"); }
+stream = await agent.stream(null, { ...config, streamMode: "values", }); for await ( const { messages } of stream ) { let msg = messages[messages?.length - 1]; if (msg?.content) { console.log(msg.content); } if (msg?.tool_calls?.length > 0) { console.log(msg.tool_calls); } console.log("-----\n"); } 
 ```
 
 ```
@@ -73,6 +73,13 @@ This error arose because our tool argument of "SF, California" is not a location
 Let's show how we would edit the tool call to search for "San Francisco" instead of "SF, California" - since our tool as written treats "San Francisco, CA" as an unknown location. We will update the state and then resume streaming the graph and should see no errors arise. Note that the reducer we use for our messages channel will replace a messaege only if a message with the exact same ID is used. For that reason we can do new AiMessage(...) and instead have to directly modify the last message from the messages channel, making sure not to edit its ID.
 
 ```
-// First, lets get the current state const currentState = await agent.getState(config); // Let's now get the last message in the state // This is the one with the tool calls that we want to update let lastMessage = curren
+// First, lets get the current state const currentState = await agent.getState(config); // Let's now get the last message in the state // This is the one with the tool calls that we want to update let lastMessage = currentState.values.messages[currentState.values.messages.length - 1]; // Now let's update the tool call to have the correct location lastMessage.tool_calls[0].args.location = "San Francisco"; // Now let's update the state await agent.updateState(config, { messages: [lastMessage] }); // Now let's resume the stream stream = await agent.stream(null, { ...config, streamMode: "values", }); for await ( const { messages } of stream ) { let msg = messages[messages?.length - 1]; if (msg?.content) { console.log(msg.content); } if (msg?.tool_calls?.length > 0) { console.log(msg.tool_calls); } console.log("-----\n"); } 
+```
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+```
+It's always sunny in sf -----
+```
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

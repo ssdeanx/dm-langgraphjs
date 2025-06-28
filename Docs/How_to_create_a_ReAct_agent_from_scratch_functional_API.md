@@ -1,4 +1,4 @@
-How to create a ReAct agent from scratch (Functional API)
+How to create a ReAct agent from scratch (Functional API)¶
 
 Skip to content
 
@@ -58,7 +58,8 @@ Let's first define the tools and model we will use for our example. Here we will
 We will use an OpenAI chat model for this example, but any model supporting tool-calling will suffice.
 
 ```
-import { ChatOpenAI } from "@langchain/openai"; import { tool } from "@langchain/core/tools"; import { z } from "zod"; const model = new ChatOpenAI({ model: "gpt-4o-mini", }); const getWeather = tool(async ({ location }) => { const lowercaseLocation = location.toLowerCase(); if (lowercaseLocation.includes("sf") || lowercaseLocation.includes("san francisco")) { return "It's sunny!"; } else if (lowercaseLocation.includes("boston")) { return "It's rainy!"; } else { return `I am not sure what the weather is in ${location}`; } }, { name: "getWeather", schema: z.object({ location: z.string().describe("location to get the weather for"), }), description: "Call to get the weather from a specific location." }); const tools = [getWeather];
+import { ChatOpenAI } from "@langchain/openai"; import { tool } from "@langchain/core/tools"; import { z } from "zod"; const model = new ChatOpenAI({ model: "gpt-4o-mini", }); const getWeather = tool(async ({ location }) => { const lowercaseLocation = location.toLowerCase(); if (lowercaseLocation.includes("sf") || lowercaseLocation.includes("san francisco")) { return "It's sunny!"; } else if (lowercaseLocation.includes("boston")) { return "It's rainy!"; } else { return `I am not sure what the weather is in ${location}`;
+} }, { name: "getWeather", schema: z.object({ location: z.string().describe("location to get the weather for"), }), description: "Call to get the weather from a specific location." }); const tools = [getWeather];
 ```
 
 ### Define tasks¶
@@ -69,7 +70,9 @@ We next define the tasks we will execute. Here there are two different tasks:
 2. Call tool: If our model generates tool calls, we want to execute them.
 
 ```
-import { type BaseMessageLike, AIMessage, ToolMessage, } from "@langchain/core/messages"; import { type ToolCall } from "@langchain/core/messages/tool"; import { task } from "@langchain/langgraph"; const toolsByName = Object.fromEntries(tools.map((tool) => [tool.name, tool])); const callModel = task("callModel", async (messages: BaseMessageLike[]) => { const response = await model.bindTools(tools).invoke(messages); return response; }); const callTool = task( "callTool", async (toolCall: ToolCall): Promise<AIMessage> => { const tool = toolsByName[toolCall.name]; const observation = await tool.invoke(toolCall.args); return new ToolMessage({ content: observation, tool_call_id: toolCall.id }); // Can also pass toolCall directly into the tool to return a ToolMessage // return tool.invoke(toolCall); });
+import { type BaseMessageLike, AIMessage, ToolMessage,
+} from "@langchain/core/messages"; import { type ToolCall } from "@langchain/core/messages/tool"; import { task } from "@langchain/langgraph"; const toolsByName = Object.fromEntries(tools.map((tool) => [tool.name, tool])); const callModel = task("callModel", async (messages: BaseMessageLike[]) => { const response = await model.bindTools(tools).invoke(messages); return response; }); const callTool = task(
+"callTool", async (toolCall: ToolCall): Promise<AIMessage> => { const tool = toolsByName[toolCall.name]; const observation = await tool.invoke(toolCall.args); return new ToolMessage({ content: observation, tool_call_id: toolCall.id }); // Can also pass toolCall directly into the tool to return a ToolMessage // return tool.invoke(toolCall); });
 ```
 
 ### Define entrypoint¶
@@ -77,7 +80,14 @@ import { type BaseMessageLike, AIMessage, ToolMessage, } from "@langchain/core/m
 Our entrypoint will handle the orchestration of these two tasks. As described above, when our callModel task generates tool calls, the callTool task will generate responses for each. We append all messages to a single messages list.
 
 ```
-import { entrypoint, addMessages } from "@langchain/langgraph"; const agent = entrypoint( "agent", async (messages: BaseMessageLike[]) => { let currentMessages = messages; let llmResponse = await callModel(currentMessages); while (true) { if (!llmResponse.tool_calls?.length) { break; } // Execute tools const toolResults = await Promise.all( llmResponse.tool_calls.map((toolCall) => { return callTool(toolCall); }) ); // Append to message list currentMessages = addMessages(currentMessages, [llmResponse, ...toolResults]); // Call model again llmResponse = await callModel(currentMessages); } return llmResponse; } );
+import { entrypoint, addMessages } from "@langchain/langgraph"; const agent = entrypoint(
+"agent", async (messages: BaseMessageLike[]) => { let currentMessages = messages; let llmResponse = await callModel(currentMessages); while (true) { if (!llmResponse.tool_calls?.length) { break;
+} // Execute tools const toolResults = await Promise.all(
+llmResponse.tool_calls.map((toolCall) => {
+return callTool(toolCall);
+}) ); // Append to message list currentMessages = addMessages(currentMessages, [llmResponse, ...toolResults]); // Call model again llmResponse = await callModel(currentMessages);
+} return llmResponse;
+} );
 ```
 
 ## Usage¶
@@ -85,6 +95,6 @@ import { entrypoint, addMessages } from "@langchain/langgraph"; const agent = en
 To use our agent, we invoke it with a messages list. Based on our implementation, these can be LangChain message objects or OpenAI-style objects:
 
 ```
-import { BaseMessage, isAIMessage } from "@langchain/core/messages"; const prettyPrintMessage = (message: BaseMessage) => { console
-
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+import { BaseMessage, isAIMessage } from "@langchain/core/messages"; const prettyPrintMessage = (message: BaseMessage) => { console.log("=".repeat(30), `${message.getType()} message`, "=".repeat(30)); console.log(message.content); if (isAIMessage(message) && message.tool_calls?.length) { console.log(JSON.stringify(message.tool_calls, null, 2));
+} } // Usage example const userMessage = { role: "user", content: "What's the weather in san francisco?" }; console.log(userMessage); const stream = await agent.stream([userMessage]); for await (const step of stream) { for (const [taskName, update] of Object.entries(step)) { const message = update as BaseMessage; // Only print task updates if (taskName === "agent") continue; console.log(`\n${taskName}:`); prettyPrintMessage(message);
+} }

@@ -62,6 +62,31 @@ Depending on the human's approval or rejection, the graph can proceed with the a
 Pause the graph before a critical step, such as an API call, to review and approve the action. If the action is rejected, you can prevent the graph from executing the step, and potentially take an alternative action.
 
 ```
-import { interrupt, Command } from "@langchain/langgraph"; function humanApproval(state: typeof GraphAnnotation.State): Command { const isApproved = interrupt({ question: "Is this correct?", // Surface the output that should be // reviewed and approv
+import { interrupt, Command } from "@langchain/langgraph"; function humanApproval(state: typeof GraphAnnotation.State): Command { const isApproved = interrupt({ question: "Is this correct?", // Surface the output that should be // reviewed and approv }); // Update the state with the human's input or route the graph based on the input return new Command({ goto: isApproved ? "continue" : "reject", }); }
+```
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+### Edit Graph State¶
+
+Pause the graph to review and edit the graph state. This is useful for correcting mistakes or updating the state with additional information. This pattern often involves updating the state with the human's input.
+
+```
+import { interrupt, Command } from "@langchain/langgraph"; function humanEdit(state: typeof GraphAnnotation.State): Command { const updatedState = interrupt({ question: "Please edit the state.", state_to_edit: state, }); // Update the state with the human's input return new Command({ update: updatedState, }); }
+```
+
+### Get Input¶
+
+Explicitly request human input at a particular step in the graph. This is useful for collecting additional information or context to inform the agent's decision-making process or for supporting multi-turn conversations.
+
+```
+import { interrupt, Command } from "@langchain/langgraph"; function humanInput(state: typeof GraphAnnotation.State): Command { const userInput = interrupt({ question: "Please provide additional input.", }); // Update the state with the human's input return new Command({ update: { user_input: userInput, }, }); }
+```
+
+## Additional Resources 📚¶
+
+* Conceptual Guide: Persistence: Read the persistence guide for more context about persistence.
+* How to Wait for User Input: Step-by-step instructions for implementing human-in-the-loop workflows that wait for user input.
+* How to Review Tool Calls: Step-by-step instructions for implementing human-in-the-loop workflows that review tool calls.
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

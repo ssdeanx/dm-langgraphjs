@@ -16,7 +16,7 @@ This guide requires @langchain/langgraph>=0.0.28, @langchain/anthropic>=0.2.6, a
 
 ## Using the prebuilt ToolNode¶
 
-To start, define a mock weather tool that has some hidden restrictions on input queries. The intent here is to simulate a real-world case where a model fails to call a tool correctly:
+To start, define a mock weather tool that has some hidden restrictions on input queries:
 
 ```
 $ npm install @langchain/langgraph @langchain/anthropic @langchain/core
@@ -54,6 +54,29 @@ This is a fine default in many cases, but there are cases where custom fallbacks
 For example, the below tool requires as input a list of elements of a specific length - tricky for a small model! We'll also intentionally avoid pluralizing topic to trick the model into thinking it should pass a string:
 
 ```
-import { StringOutputPars
+import { StringOutputParser } from "@langchain/core/output_parsers"; const getElements = tool(async ({ topic, num_elements }) => { if (num_elements !== 3) { throw new Error("num_elements must be 3"); } return `Here are 3 elements about ${topic}: element1, element2, element3`; }, { name: "get_elements", description: "Call to get a list of elements about a topic", schema: z.object({ topic: z.string(), num_elements: z.number(), }), }); const modelWithToolsAndParser = new ChatAnthropic({ model: "claude-3-haiku-20240307", temperature: 0, }).bindTools([getElements]).pipe(new StringOutputParser());
+```
 
-Content truncated. Call the fetch tool with a start_index of 5000 to get more content.
+We can then define a custom tool node that handles errors by returning a message to the LLM:
+
+```
+import { ToolMessage } from "@langchain/core/messages"; const customToolNode = async (state: typeof MessagesAnnotation.State) => { const { messages } = state; const lastMessage = messages[messages.length - 1]; try { return { messages: [await toolNode.invoke(lastMessage)] }; } catch (e) { return { messages: [new ToolMessage({ content: e.message, name: lastMessage.tool_calls[0].name, tool_call_id: lastMessage.tool_calls[0].id, })] }; } };
+```
+
+We can then use this custom tool node in our graph:
+
+```
+const appWithCustomToolNode = new StateGraph(MessagesAnnotation) .addNode("agent", callModel) .addNode("tools", customToolNode) .addEdge("__start__", "agent") .addEdge("tools", "agent") .addConditionalEdges("agent", shouldContinue, { tools: "tools", __end__: "__end__", }) .compile();
+```
+
+```
+const response2 = await appWithCustomToolNode.invoke({ messages: [ { role: "user", content: "what are 3 elements about cats?"}, ] }); for (const message of response2.messages) { const content = JSON.stringify(message.content, null, 2); console.log(`${message._getType().toUpperCase()}: ${content}`); }
+```
+
+```
+HUMAN: "what are 3 elements about cats?" AI: [ { "type": "text", "text": "Okay, I can help you with that. I'll find 3 elements about cats." }, { "type": "tool_use", "id": "toolu_015dywEMjSJsjkgP91VDbm52", "name": "get_elements", "input": { "topic": "cats", "num_elements": 3 } } ] TOOL: "num_elements must be 3" AI: "I apologize, it seems I made a mistake. I'm having trouble retrieving the elements about cats. Could you please rephrase your request or ask about something else?"
+```
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

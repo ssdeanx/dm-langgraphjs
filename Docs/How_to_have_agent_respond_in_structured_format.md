@@ -67,18 +67,167 @@ We also want to define a response schema for the language model and bind it to t
 Because we only intend to use this final tool to guide the schema of the model's final response, we'll declare it with a mocked out function:
 
 ```
-import { tool } from "@langchain/core/tools"; const Response = z.object({ temperature: z.number().describe("the temperature"), other_notes: z.string().describe("any other notes about the weather"), }); const finalResponseTool = tool(async () => "mocked value", { name: "Response", description: "Always respond to the user using this tool.", schema: Response }) const boundModel = model.bindTools([ ...tools, finalResponseTool ]);
+import { tool } from "@langchain/core/tools"; const Response = z.object({ temperature: z.number().describe("the temperature"), other_notes: z.string().describe("any other notes about the weather"), }); const finalResponseTool = tool(async () => "mocked value", { name: "Response", description: "Always respond to the user using this tool.", schema: Response })
+const boundModel = model.bindTools([
+  ...tools,
+  finalResponseTool
+]);
 ```
 
 ## Define the nodes¶
 
 ```
-import { AIMessage } from "@langchain/core/messages"; import { RunnableConfig } from "@langchain/core/runnables"; // Define the function that determines whether to continue or not const route = (state: typeof GraphState.State) => { const { messages } = state; const lastMessage = messages[messages.length - 1] as AIMessage; // If there is no function call, then we finish if (!lastMessage.tool_calls || lastMessage.tool_calls.length === 0) { return "__end__"; } // Otherwise if there is, we need to check what type of function call it is if (lastMessage.tool_calls[0].name === "Response") { return "__end__"; } // Otherwise we continue return "tools"; }; // Define the function that calls the model const callModel = async ( state: typeof GraphState.State, config?: RunnableConfig, ) => { const { messages } = state; const response = await boundModel.invoke(messages, config); // We return an object, because this will get added to the existing list return { messages: [response] }; };
+import { AIMessage } from "@langchain/core/messages"; import { RunnableConfig } from "@langchain/core/runnables"; // Define the function that determines whether to continue or not const route = (state: typeof GraphState.State) => { const { messages } = state; const lastMessage = messages[messages.length - 1] as AIMessage; // If there is no function call, then we finish if (!lastMessage.tool_calls || lastMessage.tool_calls.length === 0) { return "__end__"; } // Otherwise if there is, we need to check what type of function call it is if (lastMessage.tool_calls[0].name === "Response") { return "__end__"; } // Otherwise we continue return "tools"; }; // Define the function that calls the model const callModel = async (
+  state: typeof GraphState.State,
+  config?: RunnableConfig,
+) => {
+  const { messages } = state;
+  const response = await boundModel.invoke(messages, config);
+  // We return an object, because this will get added to the existing list
+  return { messages: [response] };
+};
 ```
 
 ## Define the graph¶
 
 ```
-import { StateGraph } from "@langchain/langgraph"; // Define a new graph const workflow = new StateGraph(GraphState) .addNode("agent", callModel) .addNode("tools", toolNode) .addEdge("__start__", "agent") .addConditionalEdges( // First, we define the start node. We use `agent`. // This means these are the edges taken afte
+import { StateGraph } from "@langchain/langgraph"; // Define a new graph const workflow = new StateGraph(GraphState)
+  .addNode("agent", callModel)
+  .addNode("tools", toolNode)
+  .addEdge("__start__", "agent")
+  .addConditionalEdges(
+    // First, we define the start node. We use `agent`.
+    // This means these are the edges taken after the `agent` node is called.
+    "agent",
+    // Next, we pass in the function that will determine which node is called next.
+    route,
+    // We supply a map of possible response values to the conditional edge
+    // to make it possible to draw a visualization of the graph.
+    {
+      __end__: "__end__",
+      tools: "tools",
+    }
+  )
+  // We now add a normal edge from `tools` to `agent`.
+  // This means that after `tools` is called, `agent` node is called next.
+  .addEdge("tools", "agent");
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+// Finally, we compile it!
+// This compiles it into a LangChain Runnable,
+// meaning you can use it as you would any other runnable
+const app = workflow.compile();
+```
+
+```
+import * as tslab from "tslab"; const graph = app.getGraph(); const image = await graph.drawMermaidPng(); const arrayBuffer = await image.arrayBuffer(); await tslab.display.png(new Uint8Array(arrayBuffer));
+```
+
+## Use it!¶
+
+We can now use it! This now exposes the same interface as all other LangChain runnables.
+
+```
+import { HumanMessage, isAIMessage } from "@langchain/core/messages"; const prettyPrint = (message: BaseMessage) => {
+  let txt = `[${message._getType()}]: ${message.content}`;
+  if (
+    isAIMessage(message) &&
+    (message as AIMessage)?.tool_calls?.length || 0 > 0
+  ) {
+    const tool_calls = (message as AIMessage)?.tool_calls
+      ?.map((tc) => `- ${tc.name}(${JSON.stringify(tc.args)})`)
+      .join("\n");
+    txt += ` \nTools: \n${tool_calls}`;
+  }
+  console.log(txt);
+};
+
+const inputs = {
+  messages: [new HumanMessage("what is the weather in sf")],
+};
+
+const stream = await app.stream(inputs, { streamMode: "values" });
+for await (const output of stream) {
+  const { messages } = output;
+  prettyPrint(messages[messages.length - 1]);
+  console.log("\n---\n");
+}
+```
+
+```
+[human]: what is the weather in sf ---
+[ai]: Tools:
+- search({"query":"current weather in San Francisco"})
+---
+[tool]: 67 degrees. Cloudy with a chance of rain.
+---
+[ai]: Tools:
+- Response({"temperature":67,"other_notes":"Cloudy with a chance of rain."})
+---
+```
+
+## Partially streaming JSON¶
+
+If we want to stream the structured output as soon as it's available, we can use the .streamEvents() method. We'll aggregate emitted on_chat_model_events and inspect the name field. As soon as we detect that the model is calling the final output tool, we can start logging the relevant chunks.
+
+Here's an example:
+
+```
+import { concat } from "@langchain/core/utils/stream"; const eventStream = await app.streamEvents(inputs, { version: "v2" });
+let aggregatedChunk;
+for await (const { event, data } of eventStream) {
+  if (event === "on_chat_model_stream") {
+    const { chunk } = data;
+    if (aggregatedChunk === undefined) {
+      aggregatedChunk = chunk;
+    } else {
+      aggregatedChunk = concat(aggregatedChunk, chunk);
+    }
+    const currentToolCalls = aggregatedChunk.tool_calls;
+    if (
+      currentToolCalls.length === 0 ||
+      currentToolCalls[0].name === "" ||
+      !finalResponseTool.name.startsWith(currentToolCalls[0].name)
+    ) {
+      // No tool calls or a different tool call in the message,
+      // so drop what's currently aggregated and start over
+      aggregatedChunk = undefined;
+    } else if (currentToolCalls[0].name === finalResponseTool.name) {
+      // Now we're sure that this event is part of the final output!
+      // Log the partially aggregated args.
+      console.log(aggregatedChunk.tool_call_chunks[0].args);
+      // You can also log the raw args instead:
+      // console.log(chunk.tool_call_chunks);
+      console.log("---");
+    }
+  }
+}
+// Final aggregated tool call
+console.log(aggregatedChunk.tool_calls);
+```
+
+```
+---
+{" ---
+{"temperature ---
+{"temperature": ---
+{"temperature":67 ---
+{"temperature":67," ---
+{"temperature":67,"other ---
+{"temperature":67,"other_notes ---
+{"temperature":67,"other_notes":" ---
+{"temperature":67,"other_notes":"Cloud ---
+{"temperature":67,"other_notes":"Cloudy ---
+{"temperature":67,"other_notes":"Cloudy with ---
+{"temperature":67,"other_notes":"Cloudy with a ---
+{"temperature":67,"other_notes":"Cloudy with a chance ---
+{"temperature":67,"other_notes":"Cloudy with a chance of ---
+{"temperature":67,"other_notes":"Cloudy with a chance of rain ---
+{"temperature":67,"other_notes":"Cloudy with a chance of rain." ---
+{"temperature":67,"other_notes":"Cloudy with a chance of rain."}
+---
+[ { name: 'Response', args: { temperature: 67, other_notes: 'Cloudy with a chance of rain.' }, id: 'call_oOhNx2SdeelXn6tbenokDtkO', type: 'tool_call' } ]
+```
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

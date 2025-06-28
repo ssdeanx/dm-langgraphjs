@@ -90,6 +90,107 @@ We will also need to define some edges. Some of these edges may be conditional. 
 Let's define the nodes, as well as a function to decide how what conditional edge to take.
 
 ```
-import { END } from "@langchain/langgraph"; import { AIMessage, Too
+import { END } from "@langchain/langgraph"; import { AIMessage, ToolMessage } from "@langchain/core/messages"; import { RunnableConfig } from "@langchain/core/runnables"; // Define the function that determines whether to continue or not const shouldContinue = (state: typeof AgentState.State) => { const { messages } = state; const lastMessage = messages[messages.length - 1] as AIMessage; // If there is no function call, then we finish if (!lastMessage.tool_calls || lastMessage.tool_calls.length === 0) { return END; } // Otherwise if there is, we continue return "tools"; }; // **MODIFICATION** // // Here we don't pass all messages to the model but rather only pass the `N` most recent. Note that this is a terribly simplistic way to handle messages meant as an illustration, and there may be other methods you may want to look into depending on your use case. We also have to make sure we don't truncate the chat history to include the tool message first, as this would cause an API error. const callModel = async (
+ state: typeof AgentState.State,
+ config?: RunnableConfig,
+ ) => {
+ let modelMessages = [];
+ for (let i = state.messages.length - 1; i >= 0; i--) {
+ modelMessages.push(state.messages[i]);
+ if (modelMessages.length >= 5) {
+ if (!ToolMessage.isInstance(modelMessages[modelMessages.length - 1])) {
+ break;
+ }
+ }
+ }
+ modelMessages.reverse();
+ const response = await boundModel.invoke(modelMessages, config);
+ // We return an object, because this will get added to the existing list
+ return { messages: [response] };
+ };
+```
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+## Define the graph¶
+
+We can now put it all together and define the graph!
+
+```
+import { START, StateGraph } from "@langchain/langgraph"; // Define a new graph const workflow = new StateGraph(AgentState)
+ .addNode("agent", callModel)
+ .addNode("tools", toolNode)
+ .addEdge(START, "agent")
+ .addConditionalEdges(
+ "agent",
+ shouldContinue,
+ )
+ .addEdge("tools", "agent"); // Finally, we compile it!
+ // This compiles it into a LangChain Runnable,
+ // meaning you can use it as you would any other runnable const app = workflow.compile();
+```
+
+## Use it!¶
+
+We can now use it! This now exposes the same interface as all other LangChain runnables.
+
+```
+import { HumanMessage, isAIMessage } from "@langchain/core/messages"; import { GraphRecursionError } from "@langchain/langgraph"; const prettyPrint = (message: BaseMessage) => {
+ let txt = `[${message._getType()}]: ${message.content}`;
+ if (
+ (isAIMessage(message) && (message as AIMessage)?.tool_calls?.length) ||
+ 0 > 0
+ ) {
+ const tool_calls = (message as AIMessage)?.tool_calls
+ ?.map((tc) => `- ${tc.name}(${JSON.stringify(tc.args)})`)
+ .join("\n");
+ txt += ` \nTools: \n${tool_calls}`;
+ }
+ console.log(txt);
+ };
+ const inputs = {
+ messages: [
+ new HumanMessage(
+ "what is the weather in sf? Don't give up! Keep using your tools.",
+ ),
+ ],
+ };
+ // Setting the recursionLimit will set a max number of steps. We expect this to endlessly loop :)
+ try {
+ for await (
+ const output of await app.stream(inputs, {
+ streamMode: "values",
+ recursionLimit: 10,
+ })
+ ) {
+ const lastMessage = output.messages[output.messages.length - 1];
+ prettyPrint(lastMessage);
+ console.log("-----\n");
+ }
+ } catch (e) {
+ // Since we are truncating the chat history, the agent never gets the chance
+ // to see enough information to know to stop, so it will keep looping until we hit the
+ // maximum recursion limit.
+ if ((e as GraphRecursionError).name === "GraphRecursionError") {
+ console.log("As expected, maximum steps reached. Exiting.");
+ } else {
+ console.error(e);
+ }
+ }
+```
+
+```
+[human]: what is the weather in sf? Don't give up! Keep using your tools. -----
+[ai]: Tools: - search({"query":"current weather in San Francisco"}) -----
+[tool]: Try again in a few seconds! Checking with the weathermen... Call be again next. -----
+[ai]: Tools: - search({"query":"current weather in San Francisco"}) -----
+[tool]: Try again in a few seconds! Checking with the weathermen... Call be again next. -----
+[ai]: Tools: - search({"query":"current weather in San Francisco"}) -----
+[tool]: Try again in a few seconds! Checking with the weathermen... Call be again next. -----
+[ai]: Tools: - search({"query":"current weather in San Francisco"}) -----
+[tool]: Try again in a few seconds! Checking with the weathermen... Call be again next. -----
+[ai]: Tools: - search({"query":"current weather in San Francisco"}) -----
+As expected, maximum steps reached. Exiting.
+```
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

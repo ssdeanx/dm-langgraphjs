@@ -35,8 +35,7 @@ import { createReactAgent } from "@langchain/langgraph/prebuilt"; const agent = 
 ## Stream events from the graph¶
 
 ```
-let finalEvent; for await (const event of agent.streamEvents( { messages: [ [ "human", "what items are on the shelf? You should call the get_items tool.", ], ], }, { version: "v2", }, { includeTags: ["tool_llm"], } )) { if ("chunk" in event.data) { console.dir({ type: event.data.chunk._getType(), content: event.data.chunk.content, })
- } finalEvent = event; } 
+let finalEvent; for await (const event of agent.streamEvents( { messages: [ [ "human", "what items are on the shelf? You should call the get_items tool.", ], ], }, { version: "v2", }, { includeTags: ["tool_llm"], } )) { if ("chunk" in event.data) { console.dir({ type: event.data.chunk._getType(), content: event.data.chunk.content, }) } finalEvent = event; } 
 ```
 
 ```
@@ -50,10 +49,8 @@ const finalMessage = finalEvent?.data.output; console.dir( { type: finalMessage.
 ```
 
 ```
-{ type: 'ai', content: 'Here are three items you might find on a shelf, along with brief descriptions:\n' + '\n' + '1. Books: Bound collections of printed pages containing various forms of literature, information, or reference material.\n' + '\n' + '2. Picture frames: Decorative borders used to display and protect photographs, artwork, or other visual memorabilia.\n' + '\n' + '3. Potted plants: Small indoor plants in containers, often used for decoration or to add a touch of nature to indoor spaces.', tool_calls: [] } 
+{ type: 'ai', content: 'Here are three items you might find on a shelf, along with brief descriptions:\n' + '\n' + '1. Books: Bound collections of printed pages containing various forms of literature, information, or reference material.\n' + '\n' + '2. Picture frames: Decorative borders used to display and protect photographs, artwork, or other visual memorabilia.\n' + '\n' + '3. Potted plants: Small indoor plants in containers, often used for decoration or to add a touch of nature to indoor spaces.', tool_calls: [] }
 ```
-
-You can see that the content of the ToolMessage is the same as the output we streamed above
 
 Copyright © 2025 LangChain, Inc | Consent Preferences
 

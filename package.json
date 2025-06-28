@@ -17,7 +17,8 @@
     "format:check": "prettier --check .",
     "lint:langgraph-json": "node scripts/checkLanggraphPaths.js",
     "lint:all": "npm run lint && npm run lint:langgraph-json && npm run format:check",
-    "test:all": "npm run test && npm run test:int && npm run lint:all"
+    "test:all": "npm run test && npm run test:int && npm run lint:all",
+    "main": "npx @langchain/langgraph-cli dev"
   },
   "dependencies": {
     "@langchain/community": "^0.3.47",
@@ -49,6 +50,7 @@
     "d3-path": "^3.1.0",
     "d3-shape": "^3.2.0",
     "isomorphic-git": "^1.32.0",
+    "jiti": "^2.4.2",
     "ky": "^1.8.1",
     "langchain": "^0.3.29",
     "langchainhub": "^0.0.11",
@@ -71,7 +73,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
-    "@eslint/js": "^9.29.0",
+    "@eslint/js": "^9.30.0",
     "@tsconfig/recommended": "^1.0.10",
     "@types/jest": "^30.0.0",
     "@types/mermaid": "*",
@@ -82,7 +84,7 @@
     "@typescript-eslint/eslint-plugin": "^8.35.0",
     "@typescript-eslint/parser": "^8.35.0",
     "dotenv": "^16.4.5",
-    "eslint": "^9.29.0",
+    "eslint": "^9.30.0",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-no-instanceof": "^1.0.1",

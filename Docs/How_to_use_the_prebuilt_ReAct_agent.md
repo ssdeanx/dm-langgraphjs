@@ -46,7 +46,7 @@ import { ChatOpenAI } from "@langchain/openai"; import { tool } from '@langchain
 First, let's visualize the graph we just created
 
 ```
-import * as tslab from "tslab"; const graph = agent.getGraph(); const image = await graph.drawMermaidPng(); const arrayBuffer = await image.arrayBuffer(); await tslab.display.png(new Uint8Array(arrayBuffer));
+import * as tslab from "tslab"; const graph = agent.getGraph(); const image = await graph.drawMermaidPng(); const arrayBuffer = image.arrayBuffer(); await tslab.display.png(new Uint8Array(arrayBuffer));
 ```
 
 Let's run the app with an input that needs a tool call

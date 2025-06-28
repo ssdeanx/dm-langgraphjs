@@ -31,12 +31,7 @@ const retriever = await initializeRetriever();
  */
 async function retrieveNode(state: CragState): Promise<Partial<CragState>> {
   const documents = await retriever.invoke(state.question);
-  // Add the user's question as a HumanMessage if not already present
-  let messages = state.messages;
-  if (!messages.length || !(messages[0] instanceof HumanMessage)) {
-    messages = [new HumanMessage(state.question), ...messages];
-  }
-  return { documents, messages };
+  return { documents };
 }
 
 /**

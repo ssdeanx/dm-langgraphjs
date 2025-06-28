@@ -36,7 +36,7 @@ This guide shows how you can use Command to add dynamic control flow in your Lan
 First, let's install the required packages:
 
 ```
-yarn add @langchain/langgraph @langchain/openai @langchain/core
+yarn add @langchain/langgraph @langchain/core
 ```
 
 Set up LangSmith for LangGraph development
@@ -80,6 +80,13 @@ Called A Called B { foo: 'a|b' }
 Now let's demonstrate how you can navigate from inside a subgraph to a different node in a parent graph. We'll do so by changing node\_a in the above example into a single-node graph that we'll add as a subgraph to our parent graph.
 
 ```
-// Define the nodes const nodeASubgraph = async (_state: typeof StateAnnotation.State) => { console.log("Called A"); // this is a replacement for a real conditional edge function const goto = Math.random() > .5 ? "nodeB" : "nodeC"; // note how Command allows you to BOTH update the graph state AND route to the next node return new Command({ update: { foo: "a", }, goto, // this tells LangGraph to navigate to node_b or node_c in the parent graph // NOTE: this will navigate to the closest parent graph relative to the subgraph graph: Command.PARENT, }); }; const subgraph = new StateGraph(StateAnnotation) .addNode("nodeA", nodeASubgraph) .addEdge("__start__", "nodeA") .compile(); const parentGraph=
+// Define the nodes const nodeASubgraph = async (_state: typeof StateAnnotation.State) => { console.log("Called A"); // this is a replacement for a real conditional edge function const goto = Math.random() > .5 ? "nodeB" : "nodeC"; // note how Command allows you to BOTH update the graph state AND route to the next node return new Command({ update: { foo: "a", }, goto, // this tells LangGraph to navigate to node_b or node_c in the parent graph // NOTE: this will navigate to the closest parent graph relative to the subgraph graph: Command.PARENT, }); }; const subgraph = new StateGraph(StateAnnotation) .addNode("nodeA", nodeASubgraph) .addEdge("__start__", "nodeA") .compile(); const parentGraph= new StateGraph(StateAnnotation) .addNode("subgraph", subgraph, { ends: ["nodeB", "nodeC"] }) .addNode("nodeB", nodeB) .addNode("nodeC", nodeC) .addEdge("__start__", "subgraph") .compile(); await parentGraph.invoke({ foo: "" });
+```
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+```
+Called A Called C { foo: 'a|c' }
+```
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

@@ -38,35 +38,72 @@ You shouldn't provide a checkpointer when compiling a subgraph. Instead, you mus
 Let's define a simple graph with a single subgraph node to show how to do this.
 
 ```
-import { StateGraph, Annotation } from "@langchain/langgraph"; // subgraph const SubgraphStateAnnotation = Annotation.Root({ foo: Annotation<string>, bar: Annotation<string>, }); const subgraphNode1 = async (state: typeof SubgraphStateAnnotation.State) => { return { bar: "bar" }; }; const subgraphNode2 = async (state: typeof SubgraphStateAnnotation.State) => { // note that this node is using a state key ('bar') that is only available in the subgraph // and is sending update on the shared state key ('foo') return { foo: state.foo + state.bar }; }; const subgraphBuilder = new StateGraph(SubgraphStateAnnotation) .addNode("subgraphNode1", subgraphNode1) .addNode("subgraphNode2", subgraphNode2) .addEdge("__start__", "subgraphNode1") .addEdge("subgraphNode1", "subgraphNode2") const subgraph = subgraphBuilder.compile(); // Define parent graph const ParentStateAnnotation = Annotation.Root({ foo: Annotation<string>, }); const node1 = async (state: typeof ParentStateAnnotation.State) => { return { foo: "hi! " + state.foo, }; } const builder = new StateGraph(ParentStateAnnotation) .addNode("node1", node1) // note that we're adding the compiled subgraph as a node to the parent graph .addNode("node2", subgraph) .addEdge("__start__", "node1") .addEdge("node1", "node2") const graph = builder.compile();
+import { StateGraph, Annotation } from "@langchain/langgraph"; // subgraph const SubgraphStateAnnotation = Annotation.Root({ foo: Annotation<string>, bar: Annotation<string>, }); const subgraphNode1 = async (state: typeof SubgraphStateAnnotation.State) => { return { bar: "bar" }; }; const subgraphNode2 = async (state: typeof SubgraphStateAnnotation.State) => { // note that this node is using a state key ('bar') that is only available in the subgraph // and is sending update on the shared state key ('foo') return { foo: state.foo + state.bar }; }; const subgraph = new StateGraph(SubgraphStateAnnotation) .addNode("subgraphNode1", subgraphNode1) .addNode("subgraphNode2", subgraphNode2) .addEdge("__start__", "subgraphNode1") .addEdge("subgraphNode1", "subgraphNode2") .compile(); // parent graph const StateAnnotation = Annotation.Root({ foo: Annotation<string>, }); const node1 = async (state: typeof StateAnnotation.State) => { return { foo: "hi! " + state.foo, }; }; const builder = new StateGraph(StateAnnotation) .addNode("node1", node1) // note that we're adding the compiled subgraph as a node to the parent graph .addNode("node2", subgraph) .addEdge("__start__", "node1") .addEdge("node1", "node2");
+```
+
+We can now compile the graph with an in-memory checkpointer (MemorySaver).
+
+```
+import { MemorySaver } from "@langchain/langgraph-checkpoint"; const checkpointer = new MemorySaver(); // You must only pass checkpointer when compiling the parent graph. // LangGraph will automatically propagate the checkpointer to the child subgraphs. const graph = builder.compile({ checkpointer: checkpointer });
+```
+
+## Verify persistence works¶
+
+Let's now run the graph and inspect the persisted state for both the parent graph and the subgraph to verify that persistence works. We should expect to see the final execution results for both the parent and subgraph in state.values.
+
+```
+const config = { configurable: { thread_id: "1" } };
 ```
 
 ```
-const stream = await graph.stream({ foo: "foo" }); for await (const chunk of stream) { console.log(chunk); }
+const stream = await graph.stream({ foo: "foo" }, { ...config, subgraphs: true, }); for await (const [_source, chunk] of stream) { console.log(chunk); }
 ```
 
 ```
-{ node1: { foo: 'hi! foo' } } { node2: { foo: 'hi! foobar' } }
+{ node1: { foo: 'hi! foo' } } { subgraphNode1: { bar: 'bar' } } { subgraphNode2: { foo: 'hi! foobar' } } { node2: { foo: 'hi! foobar' } }
 ```
 
-You can see that the final output from the parent graph includes the results of subgraph invocation (the string "bar").
-
-If you would like to see streaming output from the subgraph, you can specify subgraphs: True when streaming. See more on streaming from subgraphs in this how-to guide.
+You can now view the parent graph state by calling graph.get\_state() with the same config that we used to invoke the graph.
 
 ```
-const streamWithSubgraphs = await graph.stream({ foo: "foo" }, { subgraphs: true }); for await (const chunk of streamWithSubgraphs) { console.log(chunk); }
+(await graph.getState(config)).values;
 ```
 
 ```
-[ [], { node1: { foo: 'hi! foo' } } ] [ [ 'node2:22f27b01-fa9f-5f46-9b5b-166a80d96791' ], { subgraphNode1: { bar: 'bar' } } ] [ [ 'node2:22f27b01-fa9f-5f46-9b5b-166a80d96791' ], { subgraphNode2: { foo: 'hi! foobar' } } ] [ [], { node2: { foo: 'hi! foobar' } } ]
+{ foo: 'hi! foobar' }
 ```
 
-You'll notice that the chunk output format has changed to include some additional information about the subgraph it came from.
+To view the subgraph state, we need to do two things:
 
-## Add a node function that invokes the subgraph¶
+1. Find the most recent config value for the subgraph
+2. Use graph.getState() to retrieve that value for the most recent subgraph config.
 
-For more complex systems you might want to define subgraphs that have a completely different schema from the parent graph (no shared keys). For example, in a multi-agent RAG system, a search agent might only need to keep track of queries and retrieved documents.
+To find the correct config, we can examine the state history from the parent graph and find the state snapshot before we return results from node2 (the node with subgraph):
 
-If that's the case for your application, you need to define a node function that invokes the subgraph. This function needs to transform the input (parent) state to the subgraph state before invoking the subgraph, and transform the results back to the parent
+```
+let stateWithSubgraph; const graphHistories = await graph.getStateHistory(config); for await (const state of graphHistories) { if (state.next[0] === "node2") { stateWithSubgraph = state; break; } }
+```
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+The state snapshot will include the list of tasks to be executed next. When using subgraphs, the tasks will contain the config that we can use to retrieve the subgraph state:
+
+```
+const subgraphConfig = stateWithSubgraph.tasks[0].state; console.log(subgraphConfig);
+```
+
+```
+{ configurable: { thread_id: '1', checkpoint_ns: 'node2:25814e09-45f0-5b70-a5b4-23b869d582c2' } }
+```
+
+```
+(await graph.getState(subgraphConfig)).values
+```
+
+```
+{ foo: 'hi! foobar', bar: 'bar' }
+```
+
+If you want to learn more about how to modify the subgraph state for human-in-the-loop workflows, check out this how-to guide.
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

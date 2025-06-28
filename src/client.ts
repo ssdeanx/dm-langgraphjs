@@ -1,7 +1,7 @@
 import { Client } from "@langchain/langgraph-sdk";
 import * as readline from "readline";
 import { v4 as uuidv4 } from "uuid";
-import { trace } from "langsmith/traceable";
+// import { trace } from "langsmith/traceable";
 import { createLogger, format, transports } from "winston";
 
 const client = new Client({ apiUrl: "http://localhost:2024" });

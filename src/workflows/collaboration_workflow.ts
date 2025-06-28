@@ -4,6 +4,7 @@ import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { CollaborationState } from "../agent/collaboration_state.js";
 import { HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
+import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { z } from "zod";
 import { model } from "../config/googleProvider.js";
 import { tavilyTool } from "../tools/tavily.js";
@@ -54,27 +55,6 @@ const chartAgent = await createAgent({
 });
 
 /**
- * Node for the Researcher Agent's turn.
- * @param {CollaborationState} state - The current state of the workflow.
- * @returns {Promise<Partial<CollaborationState>>} The updated state with the agent's response.
- */
-async function researcherNode(state: CollaborationState): Promise<Partial<CollaborationState>> {
-  const response = await researcherAgent.invoke({ messages: state.messages });
-  const nextStep = String((response as BaseMessage).content).includes("chart") ? "chart" : END;
-  return { messages: [new AIMessage({ content: (response as BaseMessage).content, name: "researcher" })], sender: "researcher", next: nextStep };
-}
-
-/**
- * Node for the Chart Agent's turn.
- * @param {CollaborationState} state - The current state of the workflow.
- * @returns {Promise<Partial<CollaborationState>>} The updated state with the agent's response.
- */
-async function chartNode(state: CollaborationState): Promise<Partial<CollaborationState>> {
-  const response = await chartAgent.invoke({ messages: state.messages });
-  return { messages: [new AIMessage({ content: (response as BaseMessage).content, name: "chart" })], sender: "chart", next: END };
-}
-
-/**
  * Defines the multi-agent collaboration workflow.
  * @type {StateGraph<CollaborationState>}
  */
@@ -104,25 +84,25 @@ collaborationWorkflowBuilder.addNode("researcher", researcherNode);
 collaborationWorkflowBuilder.addNode("chart", chartNode);
 
 // Fix: Cast node names to `any` to bypass type errors (see #file:graph.ts)
-collaborationWorkflowBuilder.addEdge(START as any, "researcher" as any); // Initial edge from START to researcher
+collaborationWorkflowBuilder.addEdge(START, "researcher"); // Initial edge from START to researcher
 
 collaborationWorkflowBuilder.addConditionalEdges(
-  "researcher" as any,
+  "researcher",
   (state: CollaborationState) => state.next,
   {
     chart: "chart",
     __end__: END,
-  } as any
+  }
 );
 
 collaborationWorkflowBuilder.addConditionalEdges(
-  "chart" as any,
+  "chart",
   (state: CollaborationState) => state.next,
   {
     __end__: END,
-  } as any
+  }
 );
 
-collaborationWorkflowBuilder.setEntryPoint(START); // Set START as the entry point
+ 
 
 export const collaborationWorkflow = collaborationWorkflowBuilder.compile();

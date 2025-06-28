@@ -69,6 +69,64 @@ Effective memory management enhances an agent's ability to maintain context, lea
 
 ### Planning¶
 
-In the ReAct architecture, an LLM is called repeatedly in a while-loop. At each step the agent decides which tools to call, and what the inputs to those tools should be. Those tools are then executed, and the outputs are fed back into the LLM as observations. The
+In the ReAct architecture, an LLM is called repeatedly in a while-loop. At each step the agent decides which tools to call, and what the inputs to those tools should be. Those tools are then executed, and the outputs are fed back into the LLM as observations. The while-loop terminates when the agent decides it is not worth calling any more tools.
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+### ReAct implementation¶
+
+There are several differences between this paper and the pre-built createReactAgent implementation:
+
+* First, we use tool-calling to have LLMs call tools, whereas the paper used prompting + parsing of raw output. This is because tool calling did not exist when the paper was written, but is generally better and more reliable.
+* Second, we use messages to prompt the LLM, whereas the paper used string formatting. This is because at the time of writing, LLMs didn't even expose a message-based interface, whereas now that's the only interface they expose.
+* Third, the paper required all inputs to the tools to be a single string. This was largely due to LLMs not being super capable at the time, and only really being able to generate a single input. Our implementation allows for using tools that require multiple inputs.
+* Fourth, the paper only looks at calling a single tool at the time, largely due to limitations in LLMs performance at the time. Our implementation allows for calling multiple tools at a time.
+* Finally, the paper asked the LLM to explicitly generate a "Thought" step before deciding which tools to call. This is the "Reasoning" part of "ReAct". Our implementation does not do this by default, largely because LLMs have gotten much better and that is not as necessary. Of course, if you wish to prompt it do so, you certainly can.
+
+## Custom agent architectures¶
+
+While routers and tool-calling agents (like ReAct) are common, customizing agent architectures often leads to better performance for specific tasks. LangGraph offers several powerful features for building tailored agent systems:
+
+### Human-in-the-loop¶
+
+Human involvement can significantly enhance agent reliability, especially for sensitive tasks. This can involve:
+
+* Approving specific actions
+* Providing feedback to update the agent's state
+* Offering guidance in complex decision-making processes
+
+Human-in-the-loop patterns are crucial when full automation isn't feasible or desirable. Learn more in our human-in-the-loop guide.
+
+### Parallelization¶
+
+Parallel processing is vital for efficient multi-agent systems and complex tasks. LangGraph supports parallelization through its Send API, enabling:
+
+* Concurrent processing of multiple states
+* Implementation of map-reduce-like operations
+* Efficient handling of independent subtasks
+
+For practical implementation, see our map-reduce tutorial.
+
+### Subgraphs¶
+
+Subgraphs are essential for managing complex agent architectures, particularly in multi-agent systems. They allow:
+
+* Isolated state management for individual agents
+* Hierarchical organization of agent teams
+* Controlled communication between agents and the main system
+
+Subgraphs communicate with the parent graph through overlapping keys in the state schema. This enables flexible, modular agent design. For implementation details, refer to our subgraph how-to guide.
+
+### Reflection¶
+
+Reflection mechanisms can significantly improve agent reliability by:
+
+1. Evaluating task completion and correctness
+2. Providing feedback for iterative improvement
+3. Enabling self-correction and learning
+
+While often LLM-based, reflection can also use deterministic methods. For instance, in coding tasks, compilation errors can serve as feedback. This approach is demonstrated in this video using LangGraph for self-corrective code generation.
+
+By leveraging these features, LangGraph enables the creation of sophisticated, task-specific agent architectures that can handle complex workflows, collaborate effectively, and continuously improve their performance.
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

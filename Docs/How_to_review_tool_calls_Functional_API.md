@@ -67,7 +67,7 @@ Our tasks are unchanged from the ReAct agent guide:
 2. Call tool: If our model generates tool calls, we want to execute them.
 
 ```
-import { type BaseMessageLike, AIMessage, ToolMessage, } from "@langchain/core/messages"; import { type ToolCall } from "@langchain/core/messages/tool"; import { task } from "@langchain/langgraph"; const toolsByName = Object.fromEntries(tools.map((tool) => [tool.name, tool])); const callModel = task("callModel", async (messages: BaseMessageLike[]) => { const response = await model.bindTools(tools).invoke(messages); return response; }); const callTool = task( "callTool", async (toolCall: ToolCall): Promise<AIMessage> => { const tool = toolsByName[toolCall.name]; const observation = await tool.invoke(toolCall.args); return new ToolMessage({ content: observation, tool_call_id: toolCall.id }); // Can also pass toolCall directly into the tool to return a ToolMessage // return tool.invoke(toolCall); });
+import { type BaseMessageLike, AIMessage, ToolMessage, } from "@langchain/core/messages"; import { type ToolCall } from "@langchain/core/messages/tool"; import { task } from "@langchain/langgraph"; const toolsByName = Object.fromEntries(tools.map((tool) => [tool.name, tool])); const callModel = task("callModel", async (messages: BaseMessageLike[]) => { const response = await model.bindTools(tools).invoke(messages); return response; }); const callTool = task("callTool", async (toolCall: ToolCall): Promise<AIMessage> => { const tool = toolsByName[toolCall.name]; const observation = await tool.invoke(toolCall.args); return new ToolMessage({ content: observation, tool_call_id: toolCall.id }); // Can also pass toolCall directly into the tool to return a ToolMessage // return tool.invoke(toolCall); });
 ```
 
 ## Define entrypoint¶
@@ -83,6 +83,102 @@ Given a tool call, our function will interrupt for human review. At that point w
 We will demonstrate these three cases in the usage examples below.
 
 ```
-import { interrupt } from "@langchain/langgraph"; function reviewToolCall(toolCall: ToolCall): ToolCall | ToolMessage { // Interrupt for human review const humanReview = interrupt(
+import { interrupt } from "@langchain/langgraph"; function reviewToolCall(toolCall: ToolCall): ToolCall | ToolMessage { // Interrupt for human review const humanReview = interrupt({ question: "Is this correct?", tool_call: toolCall, }); const { action, data } = humanReview; if (action === "continue") { return toolCall; } else if (action === "update") { return { ...toolCall, args: data, }; } else if (action === "feedback") { return new ToolMessage({ content: data, name: toolCall.name, tool_call_id: toolCall.id, }); } throw new Error(`Unsupported review action: ${action}`); }
+```
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+We can now update our entrypoint to review the generated tool calls. If a tool call is accepted or revised, we execute in the same way as before. Otherwise, we just append the ToolMessage supplied by the human.
+
+Tip
+
+The results of prior tasks — in this case the initial model call — are persisted, so that they are not run again following the interrupt.
+
+```
+import { MemorySaver, addMessages, entrypoint, getPreviousState, } from "@langchain/langgraph"; const checkpointer = new MemorySaver(); const agent = entrypoint({ checkpointer, name: "agent", }, async (messages: BaseMessageLike[]) => { const previous = getPreviousState<BaseMessageLike[]>() ?? []; let currentMessages = addMessages(previous, messages); let llmResponse = await callModel(currentMessages); while (true) { if (!llmResponse.tool_calls?.length) { break; } // Review tool calls const toolResults: ToolMessage[] = []; const toolCalls: ToolCall[] = []; for (let i = 0; i < llmResponse.tool_calls.length; i++) { const review = await reviewToolCall(llmResponse.tool_calls[i]); if (review instanceof ToolMessage) { toolResults.push(review); } else { // is a validated tool call toolCalls.push(review); if (review !== llmResponse.tool_calls[i]) { llmResponse.tool_calls[i] = review; } } } // Execute remaining tool calls const remainingToolResults = await Promise.all( toolCalls.map((toolCall) => callTool(toolCall)) ); // Append to message list currentMessages = addMessages( currentMessages, [llmResponse, ...toolResults, ...remainingToolResults] ); // Call model again llmResponse = await callModel(currentMessages); } // Generate final response currentMessages = addMessages(currentMessages, llmResponse); return entrypoint.final({ value: llmResponse, save: currentMessages }); });
+```
+
+### Usage¶
+
+Let's demonstrate some scenarios.
+
+```
+import { BaseMessage, isAIMessage } from "@langchain/core/messages"; const prettyPrintMessage = (message: BaseMessage) => { console.log("=".repeat(30), `${message.getType()} message`, "=".repeat(30)); console.log(message.content); if (isAIMessage(message) && message.tool_calls?.length) { console.log(JSON.stringify(message.tool_calls, null, 2)); } } const printStep = (step: Record<string, any>) => { if (step.__metadata__?.cached) { return; } for (const [taskName, result] of Object.entries(step)) { if (taskName === "agent") { continue; // just stream from tasks } console.log(`\n${taskName}:`); if (taskName === "__interrupt__" || taskName === "reviewToolCall") { console.log(JSON.stringify(result, null, 2)); } else { prettyPrintMessage(result); } } };
+```
+
+### Accept a tool call¶
+
+To accept a tool call, we just indicate in the data we provide in the Command that the tool call should pass through.
+
+```
+const config = { configurable: { thread_id: "1" } }; const userMessage = { role: "user", content: "What's the weather in san francisco?" }; console.log(userMessage); const stream = await agent.stream([userMessage], config); for await (const step of stream) { printStep(step); }
+```
+
+```
+{ role: 'user', content: "What's the weather in san francisco?" } ``````output callModel: ============================== ai message ============================== [ { "name": "getWeather", "args": { "location": "San Francisco" }, "type": "tool_call", "id": "call_pe7ee3A4lOO4Llr2NcfRukyp" } ] __interrupt__: [ { "value": { "question": "Is this correct?", "tool_call": { "name": "getWeather", "args": { "location": "San Francisco" }, "type": "tool_call", "id": "call_pe7ee3A4lOO4Llr2NcfRukyp" } }, "when": "during", "resumable": true, "ns": [ "agent:dcee519a-80f5-5950-9e1c-e8bb85ed436f" ] } ]
+```
+
+```
+import { Command } from "@langchain/langgraph"; const humanInput = new Command({ resume: { action: "continue", }, }); const resumedStream = await agent.stream(humanInput, config) for await (const step of resumedStream) { printStep(step); }
+```
+
+```
+callTool: ============================== tool message ============================== It's sunny! callModel: ============================== ai message ============================== The weather in San Francisco is sunny!
+```
+
+### Revise a tool call¶
+
+To revise a tool call, we can supply updated arguments.
+
+```
+const config2 = { configurable: { thread_id: "2" } }; const userMessage2 = { role: "user", content: "What's the weather in san francisco?" }; console.log(userMessage2); const stream2 = await agent.stream([userMessage2], config2); for await (const step of stream2) { printStep(step); }
+```
+
+```
+{ role: 'user', content: "What's the weather in san francisco?" } callModel: ============================== ai message ============================== [ { "name": "getWeather", "args": { "location": "San Francisco" }, "type": "tool_call", "id": "call_JEOqaUEvYJ4pzMtVyCQa6H2H" } ] __interrupt__: [ { "value": { "question": "Is this correct?", "tool_call": { "name": "getWeather", "args": { "location": "San Francisco" }, "type": "tool_call", "id": "call_JEOqaUEvYJ4pzMtVyCQa6H2H" } }, "when": "during", "resumable": true, "ns": [ "agent:d5c54c67-483a-589a-a1e7-2a8465b3ef13" ] } ]
+```
+
+```
+const humanInput2 = new Command({ resume: { action: "update", data: { location: "SF, CA" }, }, }); const resumedStream2 = await agent.stream(humanInput2, config2) for await (const step of resumedStream2) { printStep(step); }
+```
+
+```
+callTool: ============================== tool message ============================== It's sunny! callModel: ============================== ai message ============================== The weather in San Francisco is sunny!
+```
+
+The LangSmith traces for this run are particularly informative:
+
+* In the trace before the interrupt, we generate a tool call for location "San Francisco".
+* In the trace after resuming, we see that the tool call in the message has been updated to "SF, CA".
+
+### Generate a custom ToolMessage¶
+
+To Generate a custom ToolMessage, we supply the content of the message. In this case we will ask the model to reformat its tool call.
+
+```
+const config3 = { configurable: { thread_id: "3" } }; const userMessage3 = { role: "user", content: "What's the weather in san francisco?" }; console.log(userMessage3); const stream3 = await agent.stream([userMessage3], config3); for await (const step of stream3) { printStep(step); }
+```
+
+```
+{ role: 'user', content: "What's the weather in san francisco?" } callModel: ============================== ai message ============================== [ { "name": "getWeather", "args": { "location": "San Francisco" }, "type": "tool_call", "id": "call_HNRjJLJo4U78dtk0uJ9YZF6V" } ] __interrupt__: [ { "value": { "question": "Is this correct?", "tool_call": { "name": "getWeather", "args": { "location": "San Francisco" }, "type": "tool_call", "id": "call_HNRjJLJo4U78dtk0uJ9YZF6V" } }, "when": "during", "resumable": true, "ns": [ "agent:6f313de8-c19e-5c3e-bdff-f90cdd68d0de" ] } ]
+```
+
+```
+const humanInput3 = new Command({ resume: { action: "feedback", data: "Please format as <City>, <State>.", }, }); const resumedStream3 = await agent.stream(humanInput3, config3) for await (const step of resumedStream3) { printStep(step); }
+```
+
+```
+callModel: ============================== ai message ============================== [ { "name": "getWeather", "args": { "location": "San Francisco, CA" }, "type": "tool_call", "id": "call_5V4Oj4JV2DVfeteM4Aaf2ieD" } ] __interrupt__: [ { "value": { "question": "Is this correct?", "tool_call": { "name": "getWeather", "args": { "location": "San Francisco, CA" }, "type": "tool_call", "id": "call_5V4Oj4JV2DVfeteM4Aaf2ieD" } }, "when": "during", "resumable": true, "ns": [ "agent:6f313de8-c19e-5c3e-bdff-f90cdd68d0de" ] } ]
+```
+
+Once it is re-formatted, we can accept it:
+
+```
+const continueCommand = new Command({ resume: { action: "continue", }, }); const continueStream = await agent.stream(continueCommand, config3) for await (const step of continueStream) { printStep(step); }
+```
+
+```
+callTool: ============================== tool message ============================== It's sunny! callModel: ============================== ai message ============================== The weather in San Francisco, CA is sunny!
+```
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

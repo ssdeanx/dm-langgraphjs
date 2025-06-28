@@ -4,7 +4,7 @@ Skip to content
 
 Our Building Ambient Agents with LangGraph course is now available on LangChain Academy!
 
-# How to pass private state
+# How to pass private state¶
 
 Oftentimes, you may want nodes to be able to pass state to each other that should NOT be part of the main schema of the graph. This is often useful because there may be information that is not needed as input/output (and therefore doesn't really make sense to have in the main schema) but is needed as part of the intermediate working logic.
 
@@ -15,7 +15,15 @@ We will have a separate node for each step. We will only have the question and a
 Let's look at an example!
 
 ```
-import { Annotation, StateGraph } from "@langchain/langgraph"; // The overall state of the graph const OverallStateAnnotation = Annotation.Root({ question: Annotation<string>, answer: Annotation<string>, }); // This is what the node that generates the query will return const QueryOutputAnnotation = Annotation.Root({ query: Annotation<string>, }); // This is what the node that retrieves the documents will return const DocumentOutputAnnotation = Annotation.Root({ docs: Annotation<string[]>, }); // This is what the node that retrieves the documents will return const GenerateOutputAnnotation = Annotation.Root({ ...OverallStateAnnotation.spec, ...DocumentOutputAnnotation.spec }); // Node to generate query const generateQuery = async (state: typeof OverallStateAnnotation.State) => { // Replace this with real logic return { query: state.question + " rephrased as a query!", }; }; // Node to retrieve documents const retrieveDocuments = async (state: typeof QueryOutputAnnotation.State) => { // Replace this with real logic return { docs: [state.query, "some random document"], }; }; // Node to generate answer const generate = async (state: typeof GenerateOutputAnnotation.State) => { return { answer: state.docs.concat([state.question]).join("\n\n"), }; }; const graph = new StateGraph(OverallStateAnnotation) .addNode("generate_query", generateQuery) .addNode("retrieve_documents", retrieveDocuments, { input: QueryOutputAnnotation }) .addNode("generate", generate, { input: GenerateOutputAnnotation }) .addEdge("__start__", "generate_query") .addEdge("generate_query", "retrieve_documents") .addEdge("retrieve_documents", "generate") .compile(); await graph.invoke({ question: "How are you?", });
+import { Annotation, StateGraph } from "@langchain/langgraph"; // The overall state of the graph const OverallStateAnnotation = Annotation.Root({ question: Annotation<string>, answer: Annotation<string>, }); // This is what the node that generates the query will return const QueryOutputAnnotation = Annotation.Root({ query: Annotation<string>, }); // This is what the node that retrieves the documents will return const DocumentOutputAnnotation = Annotation.Root({ docs: Annotation<string[]>, }); // This is what the node that retrieves the documents will return const GenerateOutputAnnotation = Annotation.Root({ ...OverallStateAnnotation.spec, ...DocumentOutputAnnotation.spec }); // Node to generate query const generateQuery = async (state: typeof OverallStateAnnotation.State) => { // Replace this with real logic return { query: state.question + " rephrased as a query!", }; }; // Node to retrieve documents const retrieveDocuments = async (state: typeof QueryOutputAnnotation.State) => { // Replace this with real logic return { docs: [state.query, "some random document"], }; }; // Node to generate answer const generate = async (state: typeof GenerateOutputAnnotation.State) => {
+return { answer: state.docs.concat([state.question]).join("\n\n"), }; }; const graph = new StateGraph(OverallStateAnnotation)
+.addNode("generate_query", generateQuery)
+.addNode("retrieve_documents", retrieveDocuments, { input: QueryOutputAnnotation })
+.addNode("generate", generate, { input: GenerateOutputAnnotation })
+.addEdge("__start__", "generate_query")
+.addEdge("generate_query", "retrieve_documents")
+.addEdge("retrieve_documents", "generate")
+.compile(); await graph.invoke({ question: "How are you?", });
 ```
 
 ```

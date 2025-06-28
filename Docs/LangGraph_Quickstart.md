@@ -74,12 +74,55 @@ The current weather in San Francisco is as follows: - Temperature: 82.0°F (27.8
 The createReactAgent constructor lets you create a simple tool-using LangGraph agent in a single line of code. Here's a visual representation of the graph:
 
 ```
-// Note: tslab only works inside a jupyter notebook. Don't worry about running this code yourself! import * as tslab from "tslab"; const graph = agent.getGraph(); const image = await graph.drawMermaidPng(); const arrayBuffer = await image.arrayBuffer(); await tslab.display.png(new Uint8Array(arrayBuffer));
+// Note: tslab only works inside a jupyter notebook. Don't worry about running this code yourself! import * as tslab from "tslab"; const graph = agent.getGraph(); const image = await graph.drawMermaidPng(); const arrayBuffer = image.arrayBuffer(); await tslab.display.png(new Uint8Array(arrayBuffer));
 ```
 
 Alternatively, you can save the graph as a PNG file locally using the following approach:
 
 ```
-import { writeFileSync } from "node:fs"; const graphStateImage = await drawableGraphGraphState.drawMermaidPng(); const graphStateArrayBuffer = await graphStateImage.arrayB
+import { writeFileSync } from "node:fs"; const graphStateImage = await drawableGraphGraphState.drawMermaidPng(); const graphStateArrayBuffer = await graphStateImage.arrayBuffer(); const filePath = "./graphState.png"; writeFileSync(filePath, new Uint8Array(graphStateArrayBuffer));
+```
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+## Customizing agent behavior¶
+
+createReactAgent can be great for simple agents, but sometimes you need something more powerful.
+
+LangGraph really shines when you need fine-grained control over an agent's behavior. The following code creates an agent with the same behavior as the example above, but you can clearly see the execution logic and how you could customize it.
+
+Update the code in your agent.mts file to match the example below. Once again, be sure to update the environment variables at the top.
+
+After you've updated your environment variables and saved the file, you can run it with the same command as before:
+
+```
+npx tsx agent.mts
+```
+
+```
+// agent.mts // IMPORTANT - Add your API keys here. Be careful not to publish them. process.env.OPENAI_API_KEY = "sk-..."; process.env.TAVILY_API_KEY = "tvly-..."; import { TavilySearchResults } from "@langchain/community/tools/tavily_search"; import { ChatOpenAI } from "@langchain/openai"; import { HumanMessage, AIMessage } from "@langchain/core/messages"; import { ToolNode } from "@langchain/langgraph/prebuilt"; import { StateGraph, MessagesAnnotation } from "@langchain/langgraph"; // Define the tools for the agent to use const tools = [new TavilySearchResults({ maxResults: 3 })]; const toolNode = new ToolNode(tools); // Create a model and give it access to the tools const model = new ChatOpenAI({ model: "gpt-4o-mini", temperature: 0, }).bindTools(tools); // Define the function that determines whether to continue or not function shouldContinue({ messages }: typeof MessagesAnnotation.State) { const lastMessage = messages[messages.length - 1] as AIMessage; // If the LLM makes a tool call, then we route to the "tools" node if (lastMessage.tool_calls?.length) { return "tools"; } // Otherwise, we stop (reply to the user) using the special "__end__" node return "__end__"; } // Define the function that calls the model async function callModel(state: typeof MessagesAnnotation.State) { const response = await model.invoke(state.messages); // We return a list, because this will get added to the existing list return { messages: [response] }; } // Define a new graph const workflow = new StateGraph(MessagesAnnotation) .addNode("agent", callModel) .addEdge("__start__", "agent") // __start__ is a special name for the entrypoint .addNode("tools", toolNode) .addEdge("tools", "agent") .addConditionalEdges("agent", shouldContinue); // Finally, we compile it into a LangChain Runnable. const app = workflow.compile(); // Use the agent const finalState = await app.invoke({ messages: [new HumanMessage("what is the weather in sf")], }); console.log(finalState.messages[finalState.messages.length - 1].content); const nextState = await app.invoke({ // Including the messages from the previous run gives the LLM context. // This way it knows we're asking about the weather in NY messages: [...finalState.messages, new HumanMessage("what about ny")], }); console.log(nextState.messages[nextState.messages.length - 1].content);
+```
+
+There are a few new things going on in this version of our ReAct Agent.
+
+A ToolNode enables the LLM to use tools. In this example, we made a shouldContinue function and passed it to addConditionalEdge so our ReAct Agent can either call a tool or respond to the request.
+
+Annotations are how graph state is represented in LangGraph. We're using MessagesAnnotation, a helper that implements a common pattern: keeping the message history in an array.
+
+## Next Steps¶
+
+Great job creating your first AI agent using LangGraph! If you're ready to build something more, check out our other tutorials to learn how to implement other end-to-end agentic workflows such as:
+
+* Retrieval-Augmented Generation (RAG)
+* Multi-agent collaboration
+* Reflection, where the agent evaluates its work
+
+If you'd rather improve your agent we have how-to guides to help, including:
+
+* Tool calling that enables agents to interact with APIs
+* give your agent persistent memory to continue conversations and debug unexpected behavior
+* Put a human in the loop for actions you want a human to verify
+* Streaming the agent output to make your application feel more responsive
+* Change the AI model in one line of code
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

@@ -44,7 +44,7 @@ This guide shows how you can add thread-level persistence to your workflow.
 
 Note
 
-If you need memory that is shared across multiple conversations or users (cross-thread persistence), check out this how-to guide.
+If you need memory that is shared across multiple conversations or users (cross-thread persistence), check out this how-to guide).
 
 Note
 
@@ -107,6 +107,27 @@ const config = { configurable: { thread_id: "1" }, streamMode: "values" as const
 You can always resume previous threads:
 
 ```
-const followupStream = await workflow.stream( [{ role: "user", content: "what's my name?" }], config, ); for await (const chunk of followupStream) { console.log("=".repeat
+const followupStream = await workflow.stream( [{ role: "user", content: "what's my name?" }], config, ); for await (const chunk of followupStream) { console.log("=".repeat(30), `${chunk.getType()} message`, "=".repeat(30)); console.log(chunk.content); }
+```
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+```
+============================== ai message ============================== Your name is Bob - you just told me that in your first message.
+```
+
+If we want to start a new conversation, we can pass in a different thread\_id. Poof! All the memories are gone!
+
+```
+const newStream = await workflow.stream( [{ role: "user", content: "what's my name?" }], { configurable: { thread_id: "2", }, streamMode: "values", }, ); for await (const chunk of newStream) { console.log("=".repeat(30), `${chunk.getType()} message`, "=".repeat(30)); console.log(chunk.content); }
+```
+
+```
+============================== ai message ============================== I don't know your name as we just started chatting. Would you like to introduce yourself?
+```
+
+Streaming tokens
+
+If you would like to stream LLM tokens from your chatbot, you can use streamMode: "messages". Check out this how-to guide to learn more.
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders

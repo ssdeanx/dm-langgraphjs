@@ -4,17 +4,17 @@ Skip to content
 
 Our Building Ambient Agents with LangGraph course is now available on LangChain Academy!
 
-# Quickstart: Launch Local LangGraph Server
+# Quickstart: Launch Local LangGraph Server¶
 
 This is a quick start guide to help you get a LangGraph app up and running locally.
 
-## Install the LangGraph CLI
+## Install the LangGraph CLI¶
 
 ```
 $ npx @langchain/langgraph-cli@latest # Or install globally, will be available as `langgraphjs` $ npm install -g @langchain/langgraph-cli
 ```
 
-## 🌱 Create a LangGraph App
+## 🌱 Create a LangGraph App¶
 
 Create a new app and follow the instructions, selecting ReAct Agent as the template. This template is a simple agent that can be flexibly extended to many tools.
 
@@ -22,7 +22,7 @@ Create a new app and follow the instructions, selecting ReAct Agent as the templ
 $ npm create langgraph
 ```
 
-## Install Dependencies
+## Install Dependencies¶
 
 In the root of your new LangGraph app, install the dependencies in edit mode so your local changes are used by the server:
 
@@ -30,7 +30,7 @@ In the root of your new LangGraph app, install the dependencies in edit mode so 
 $ yarn
 ```
 
-## Create a .env file
+## Create a .env file¶
 
 You will find a .env.example in the root of your new LangGraph app. Create a .env file in the root of your new LangGraph app and copy the contents of the .env.example file into it, filling in the necessary API keys:
 
@@ -38,7 +38,7 @@ You will find a .env.example in the root of your new LangGraph app. Create a .en
 LANGSMITH_API_KEY=lsv2... TAVILY_API_KEY=tvly-... ANTHROPIC_API_KEY=sk- OPENAI_API_KEY=sk-...
 ```
 
-## 🚀 Launch LangGraph Server
+## 🚀 Launch LangGraph Server¶
 
 ```
 $ npx @langchain/langgraph-cli@latest dev
@@ -55,7 +55,7 @@ The langgraphjs dev command starts LangGraph Server in an in-memory mode. This m
 
 If you want to test your application with a persistent storage backend, you can use the langgraphjs up command instead of langgraphjs dev. You will need to have docker installed on your machine to use this command.
 
-## LangGraph Studio Web UI
+## LangGraph Studio Web UI¶
 
 LangGraph Studio Web is a specialized UI that you can connect to LangGraph API server to enable visualization, interaction, and debugging of your application locally. Test your graph in the LangGraph Studio Web UI by visiting the URL provided in the output of the langgraph dev command.
 
@@ -73,32 +73,104 @@ Safari Compatibility
 
 Currently, LangGraph Studio Web does not support Safari when running a server locally.
 
-## Test the API
+## Test the API¶
 
 Install the LangGraph Python SDK
 
 ```
-from langgraph_sdk import get_client client = get_client(url="http://localhost:2024") async for chunk in client.runs.stream( None, # Threadless run "agent", # Name of assistant. Defined in langgraph.json. input={ "messages": [{ "role": "human", "content": "What is LangGraph?", }], }, stream_mode="updates", ): print(f"Receiving new event of type: {chunk.event}...") print(chunk.data) print("\n\n")
+from langgraph_sdk import get_client client = get_client(url="http://localhost:2024") async for chunk in client.runs.stream(
+ None, # Threadless run
+ "agent", # Name of assistant. Defined in langgraph.json.
+ input={
+ "messages": [{
+ "role": "human",
+ "content": "What is LangGraph?",
+ }],
+ },
+ stream_mode="updates",
+ ): print(f"Receiving new event of type: {chunk.event}...") print(chunk.data) print("\n\n")
 ```
 
 Install the LangGraph Python SDK
 
 ```
-from langgraph_sdk import get_sync_client client = get_sync_client(url="http://localhost:2024") for chunk in client.runs.stream( None, # Threadless run "agent", # Name of assistant. Defined in langgraph.json. input={ "messages": [{ "role": "human", "content": "What is LangGraph?", }], }, stream_mode="updates", ): print(f"Receiving new event of type: {chunk.event}...") print(chunk.data) print("\n\n")
+from langgraph_sdk import get_sync_client client = get_sync_client(url="http://localhost:2024") for chunk in client.runs.stream(
+ None, # Threadless run
+ "agent", # Name of assistant. Defined in langgraph.json.
+ input={
+ "messages": [{
+ "role": "human",
+ "content": "What is LangGraph?",
+ }],
+ },
+ stream_mode="updates",
+ ): print(f"Receiving new event of type: {chunk.event}...") print(chunk.data) print("\n\n")
 ```
 
 Install the LangGraph JS SDK
 
 ```
-const { Client } = await import("@langchain/langgraph-sdk"); // only set the apiUrl if you changed the default port when calling langgraph dev const client = new Client({ apiUrl: "http://localhost:2024"}); const streamResponse = client.runs.stream( null, # Threadless run "agent", # Assistant ID { input: { "messages": [ { "role": "user", "content": "What is LangGraph?"} ] }, streamMode: "messages", } ); for await (const chunk of streamResponse) { console.log(`Receiving new event of type: ${chunk.event}...`); console.log(JSON.stringify(chunk.data)); console.log("\n\n"); }
+$ yarn add @langchain/langgraph-sdk
+```
+
+Send a message to the assistant (threadless run)
+
+```
+const { Client } = await import("@langchain/langgraph-sdk"); // only set the apiUrl if you changed the default port when calling langgraph dev const client = new Client({ apiUrl: "http://localhost:2024"}); const streamResponse = client.runs.stream(
+ null, // Threadless run
+ "agent", // Assistant ID
+ {
+ input: {
+ "messages": [
+ {
+ "role": "user",
+ "content": "What is LangGraph?"
+ }
+ ]
+ },
+ streamMode: "messages",
+ }
+ ); for await (const chunk of streamResponse) {
+ console.log(`Receiving new event of type: ${chunk.event}...`);
+ console.log(JSON.stringify(chunk.data));
+ console.log("\n\n");
+ }
 ```
 
 ```
-curl -s --request POST \ --url "http://localhost:2024/runs/stream" \ --header 'Content-Type: application/json' \ --data "{ \"assistant_id\": \"agent\", \"input\": { \"messages\": [ { \"role\": \"human\", \"content\": \"What is LangGraph?\" } ] }, \"stream_mode\": \"updates\" }"
+curl -s --request POST \
+ --url "http://localhost:2024/runs/stream" \
+ --header 'Content-Type: application/json' \
+ --data "{ \"assistant_id\": \"agent\", \"input\": { \"messages\": [ { \"role\": \"human\", \"content\": \"What is LangGraph?\" } ] }, \"stream_mode\": \"updates\" }"
 ```
 
 Auth
 
-If you're connecting to a remote server, you will need to provide a LangSmith
+If you're connecting to a remote server, you will need to provide a LangSmith API Key for authorization. Please see the API Reference for the clients for more information.
 
-<error>Content truncated. Call the fetch tool with a start_index of 5000 to get more content.</error>
+## Next Steps¶
+
+Now that you have a LangGraph app running locally, take your journey further by exploring deployment and advanced features:
+
+### 🌐 Deploy to LangGraph Cloud¶
+
+* LangGraph Cloud Quickstart: Deploy your LangGraph app using LangGraph Cloud.
+
+### 📚 Learn More about LangGraph Platform¶
+
+Expand your knowledge with these resources:
+
+* LangGraph Platform Concepts: Understand the foundational concepts of the LangGraph Platform.
+* LangGraph Platform How-to Guides: Discover step-by-step guides to build and deploy applications.
+
+### 🛠️ Developer References¶
+
+Access detailed documentation for development and API usage:
+
+* LangGraph Server API Reference: Explore the LangGraph Server API documentation.
+* Python SDK Reference: Explore the Python SDK API Reference.
+* JS/TS SDK Reference: Explore the JS/TS SDK API Reference.
+
+Copyright © 2025 LangChain, Inc | Consent Preferences
+
+Made with Material for MkDocs Insiders
